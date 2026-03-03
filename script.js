@@ -1,14 +1,25 @@
+
+// ======== SERVICE WORKER ========
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/gymapp/sw.js').catch(function(e) {
+      console.log('SW registration failed:', e);
+    });
+  });
+}
+
 // ======== DATI ========
-let data = { settings: { restTime: 90, lastSetTime: 60 }, days: [], progress: [] };
+let data = { settings: { restTime: 90, lastSetTime: 60, defaultSets: 3, defaultReps: 10 }, days: [], progress: [] };
 
 function saveData() { localStorage.setItem('gymAppData', JSON.stringify(data)); }
+
 function loadData() {
   const stored = localStorage.getItem('gymAppData');
   if (stored) {
     try {
       data = JSON.parse(stored);
       if (!data.progress) data.progress = [];
-      if (!data.settings) data.settings = { restTime: 90, lastSetTime: 60 };
+      if (!data.settings) data.settings = { restTime: 90, lastSetTime: 60, defaultSets: 3, defaultReps: 10 };
       if (!data.settings.restTime) data.settings.restTime = 90;
       if (!data.settings.lastSetTime) data.settings.lastSetTime = 60;
       if (!data.settings.defaultSets) data.settings.defaultSets = 3;
@@ -20,7 +31,7 @@ function loadData() {
       });
       saveData();
     } catch(e) {
-      data = { days: [], progress: [], settings: { restTime: 90, lastSetTime: 60 } };
+      data = { settings: { restTime: 90, lastSetTime: 60, defaultSets: 3, defaultReps: 10 }, days: [], progress: [] };
       saveData();
     }
   }
@@ -29,9 +40,12 @@ function loadData() {
 // ======== TOAST ========
 function showToast(msg, type) {
   if (!type) type = 'success';
-  const old = document.getElementById('toast'); if (old) old.remove();
+  const old = document.getElementById('toast');
+  if (old) old.remove();
   const t = document.createElement('div');
-  t.id = 'toast'; t.className = 'toast toast-' + type; t.textContent = msg;
+  t.id = 'toast';
+  t.className = 'toast toast-' + type;
+  t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(function() { t.classList.add('toast-show'); }, 10);
   setTimeout(function() { t.classList.remove('toast-show'); setTimeout(function() { t.remove(); }, 400); }, 2800);
@@ -66,9 +80,9 @@ function showTab(tab) {
   buttons.forEach(function(btn) { btn.classList.remove('active'); });
   switch(tab) {
     case 'allenamento': showWorkout(); buttons[0].classList.add('active'); break;
-    case 'giorni': showManageDays(); buttons[1].classList.add('active'); break;
-    case 'impostazioni': showSettings(); buttons[2].classList.add('active'); break;
-    case 'progressi': showProgress(); buttons[3].classList.add('active'); break;
+    case 'giorni':      showManageDays(); buttons[1].classList.add('active'); break;
+    case 'impostazioni':showSettings(); buttons[2].classList.add('active'); break;
+    case 'progressi':   showProgress(); buttons[3].classList.add('active'); break;
   }
 }
 
@@ -99,8 +113,8 @@ function showWorkout() {
 
   if (!data.days || data.days.length === 0) {
     const empty = document.createElement('p');
-  empty.textContent = 'Nessun giorno creato. Vai in Gestione Giorni/Esercizi.';
-  main.appendChild(empty);
+    empty.textContent = 'Nessun giorno creato. Vai in Gestione Giorni/Esercizi.';
+    main.appendChild(empty);
     return;
   }
 
@@ -123,7 +137,9 @@ function startDay(dayIndex) {
   main.innerHTML = '<button class="btn-back" onclick="showWorkout()">← Indietro</button><h2>' + day.name + '</h2>';
 
   if (!day.exercises || day.exercises.length === 0) {
-    main.innerHTML += '<p>Nessun esercizio per questo giorno.</p>';
+    const empty = document.createElement('p');
+    empty.textContent = 'Nessun esercizio per questo giorno.';
+    main.appendChild(empty);
     const addExBtn = document.createElement('button');
     addExBtn.textContent = '➕ Aggiungi esercizio';
     addExBtn.onclick = function() { addExercise(dayIndex); };
@@ -134,12 +150,19 @@ function startDay(dayIndex) {
   // Timer generale giorno
   const timerDiv = document.createElement('div');
   timerDiv.className = 'day-general-timer';
-  timerDiv.innerHTML = '<label>⏱ Durata allenamento</label><span id="dayTimer_' + dayIndex + '">0:00</span>' +
+  timerDiv.innerHTML =
+    '<label>⏱ Durata allenamento</label>' +
+    '<span id="dayTimer_' + dayIndex + '">0:00</span>' +
     '<button onclick="startDayTimer(' + dayIndex + ')">▶ Start</button>' +
     '<button onclick="stopDayTimer(' + dayIndex + ')">⏹ Stop</button>' +
     '<button onclick="resetDayTimer(' + dayIndex + ')">↺ Reset</button>';
   main.appendChild(timerDiv);
   dayElapsed[dayIndex] = 0;
+
+  // Griglia esercizi 2 colonne
+  const grid = document.createElement('div');
+  grid.className = 'exercises-grid';
+  main.appendChild(grid);
 
   day.exercises.forEach(function(ex, exIndex) {
     const div = document.createElement('div');
@@ -148,22 +171,25 @@ function startDay(dayIndex) {
     // Storico peso corporeo ultime 3 sessioni
     let weightHistory = '';
     if (data.progress && data.progress.length > 0) {
-      const history = data.progress.filter(function(p) { return p.dayName === day.name && p.bodyWeightKg != null; })
-        .slice(-3).reverse().map(function(p) { return p.date + ': ' + p.bodyWeightKg + ' kg'; });
+      const history = data.progress
+        .filter(function(p) { return p.dayName === day.name && p.bodyWeightKg != null; })
+        .slice(-3).reverse()
+        .map(function(p) { return p.date + ': ' + p.bodyWeightKg + ' kg'; });
       if (history.length > 0) {
-        weightHistory = '<div class="weight-history">⚖️ ' + history.join(' &nbsp;|&nbsp; ') + '</div>';
+        weightHistory = '<div class="weight-history">⚖️ ' + history.join(' | ') + '</div>';
       }
     }
 
     let inner = '<strong>' + ex.name + '</strong>' + weightHistory +
-      'Peso: <input type="number" id="weight_' + dayIndex + '_' + exIndex + '" value="' + (ex.weight || 0) + '" ' +
-      'oninput="updateWeight(' + dayIndex + ', ' + exIndex + ', this.value)"> kg<br>';
+      '<div class="weight-row">Peso: <input type="number" id="weight_' + dayIndex + '_' + exIndex + '" value="' + (ex.weight || 0) + '" ' +
+      'oninput="updateWeight(' + dayIndex + ', ' + exIndex + ', this.value)"> kg</div>';
 
     for (let s = 0; s < ex.sets; s++) {
       const isLast = (s === ex.sets - 1);
       const restTime = isLast ? data.settings.lastSetTime : data.settings.restTime;
-      inner += '<div class="counter-card">' +
-        '<label>Serie ' + (s+1) + '</label>' +
+      inner +=
+        '<div class="counter-card">' +
+        '<label>S' + (s+1) + '</label>' +
         '<span id="timerCounter_' + dayIndex + '_' + exIndex + '_' + s + '">' + formatTime(restTime) + '</span>' +
         '<button onclick="startTimer(' + dayIndex + ',' + exIndex + ',' + s + ',' + restTime + ')">▶</button>' +
         '<button onclick="stopTimer(\'' + dayIndex + '_' + exIndex + '_' + s + '\')">⏹</button>' +
@@ -171,7 +197,7 @@ function startDay(dayIndex) {
         '</div>';
     }
     div.innerHTML = inner;
-    main.appendChild(div);
+    grid.appendChild(div);
   });
 
   // Bottone salva sessione
@@ -194,7 +220,7 @@ function startTimer(dayIndex, exIndex, setIndex, totalSeconds) {
   const key = dayIndex + '_' + exIndex + '_' + setIndex;
   if (activeTimers[key]) return;
   const el = document.getElementById('timerCounter_' + key);
-  if (el && el.dataset.done === 'true') return; // bloccato finché non si resetta
+  if (el && el.dataset.done === 'true') return;
   let remaining = totalSeconds;
   el.classList.add('timer-running');
   activeTimers[key] = setInterval(function() {
@@ -206,9 +232,10 @@ function startTimer(dayIndex, exIndex, setIndex, totalSeconds) {
       if (el) {
         el.textContent = '✅';
         el.classList.remove('timer-running');
-        el.dataset.done = 'true'; // marca come completato
+        el.dataset.done = 'true';
       }
       playBeep();
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
     }
   }, 1000);
 }
@@ -222,10 +249,7 @@ function stopTimer(key) {
 function resetTimer(key, totalSeconds) {
   stopTimer(key);
   const el = document.getElementById('timerCounter_' + key);
-  if (el) {
-    el.textContent = formatTime(totalSeconds);
-    el.dataset.done = 'false'; // sblocca il play
-  }
+  if (el) { el.textContent = formatTime(totalSeconds); el.dataset.done = 'false'; }
 }
 
 function startDayTimer(dayIndex) {
@@ -269,7 +293,6 @@ function saveSession(dayIndex) {
     showToast('❌ Peso non valido.', 'error'); return;
   }
   const bodyWeight = weightStr.trim() === '' ? null : weight;
-
   const noteInput = prompt('Nota opzionale (lascia vuoto per saltare):', '');
   const note = (noteInput !== null) ? noteInput.trim() : '';
 
@@ -282,7 +305,6 @@ function saveSession(dayIndex) {
     bodyWeightKg: bodyWeight,
     note: note
   };
-
   showSessionSummary(entry, day, dayIndex);
 }
 
@@ -314,11 +336,11 @@ function showSessionSummary(entry, day, dayIndex) {
       '</div>' +
       '<div class="summary-exercises">' + exHTML + '</div>' +
       '<button class="btn-confirm-save" onclick="confirmSaveSession(decodeURIComponent(\'' + entryJSON + '\'))">✅ Salva sessione</button>' +
-      '<button class="btn-back" onclick="startDay(' + day.id_or_index + ')" style="margin-top:10px;display:block">✖ Annulla</button>' +
     '</div>';
 
-  // Salva dayIndex nel DOM per annulla
-  main.querySelector('.btn-back').onclick = function() { startDay(dayIndex); };
+  main.querySelector('.btn-confirm-save').insertAdjacentHTML('afterend',
+    '<button class="btn-back" onclick="" style="margin-top:12px;display:block">✖ Annulla</button>');
+  main.querySelectorAll('.btn-back')[0].onclick = function() { startDay(dayIndex); };
 }
 
 function confirmSaveSession(entryStr) {
@@ -353,25 +375,34 @@ function showManageDays() {
       '<span style="font-size:0.78rem;color:#555">' + (day.exercises ? day.exercises.length : 0) + ' esercizi</span>';
 
     const btnEdit = document.createElement('button');
-    btnEdit.textContent = '✏️ Modifica'; btnEdit.onclick = function() { editDay(i); };
+    btnEdit.textContent = '✏️ Modifica';
+    btnEdit.onclick = function() { editDay(i); };
 
     const btnDel = document.createElement('button');
-    btnDel.textContent = '🗑 Elimina'; btnDel.onclick = function() { deleteDay(i); };
+    btnDel.textContent = '🗑 Elimina';
+    btnDel.onclick = function() { deleteDay(i); };
 
     const btnDup = document.createElement('button');
-    btnDup.textContent = '📋 Duplica'; btnDup.onclick = function() { duplicateDay(i); };
+    btnDup.textContent = '📋 Duplica';
+    btnDup.onclick = function() { duplicateDay(i); };
 
     const btnEx = document.createElement('button');
-    btnEx.textContent = '💪 Esercizi'; btnEx.onclick = function() { manageExercises(i); };
+    btnEx.textContent = '💪 Esercizi';
+    btnEx.onclick = function() { manageExercises(i); };
 
-    div.appendChild(btnEdit); div.appendChild(btnDel); div.appendChild(btnDup); div.appendChild(btnEx);
+    div.appendChild(btnEdit);
+    div.appendChild(btnDel);
+    div.appendChild(btnDup);
+    div.appendChild(btnEx);
     main.appendChild(div);
   });
 }
 
 function showAddDay() {
   const main = document.getElementById('mainContent');
-  main.innerHTML = '<button class="btn-back" onclick="showManageDays()">← Indietro</button><h2>Nuova Scheda</h2>' +
+  main.innerHTML =
+    '<button class="btn-back" onclick="showManageDays()">← Indietro</button>' +
+    '<h2>Nuova Scheda</h2>' +
     '<div class="card form-card"><label>Nome scheda</label>' +
     '<input type="text" id="newDayName" placeholder="es. Giorno A - Petto"></div>' +
     '<button onclick="saveNewDay()">💾 Salva</button>';
@@ -388,7 +419,9 @@ function saveNewDay() {
 
 function editDay(i) {
   const main = document.getElementById('mainContent');
-  main.innerHTML = '<button class="btn-back" onclick="showManageDays()">← Indietro</button><h2>Modifica Scheda</h2>' +
+  main.innerHTML =
+    '<button class="btn-back" onclick="showManageDays()">← Indietro</button>' +
+    '<h2>Modifica Scheda</h2>' +
     '<div class="card form-card"><label>Nome scheda</label>' +
     '<input type="text" id="editDayName" value="' + data.days[i].name + '"></div>' +
     '<button onclick="saveEditDay(' + i + ')">💾 Salva</button>';
@@ -424,7 +457,9 @@ function duplicateDay(i) {
 function manageExercises(dayIndex) {
   const day = data.days[dayIndex];
   const main = document.getElementById('mainContent');
-  main.innerHTML = '<button class="btn-back" onclick="showManageDays()">← Indietro</button><h2>' + day.name + '</h2>';
+  main.innerHTML =
+    '<button class="btn-back" onclick="showManageDays()">← Indietro</button>' +
+    '<h2>' + day.name + '</h2>';
 
   const addBtn = document.createElement('button');
   addBtn.textContent = '➕ Aggiungi esercizio';
@@ -441,16 +476,34 @@ function manageExercises(dayIndex) {
   day.exercises.forEach(function(ex, exIndex) {
     const div = document.createElement('div');
     div.className = 'exercise-card';
-    div.innerHTML = '<strong>' + ex.name + '</strong>' +
+    div.innerHTML =
+      '<strong>' + ex.name + '</strong>' +
       '<span style="font-size:0.82rem;color:#7070a0">' + ex.sets + ' serie · ' + ex.reps + ' rip · ' + (ex.weight || 0) + ' kg</span>';
 
+    const btnUp = document.createElement('button');
+    btnUp.textContent = '↑';
+    btnUp.title = 'Sposta su';
+    btnUp.disabled = exIndex === 0;
+    btnUp.onclick = function() { moveExercise(dayIndex, exIndex, -1); };
+
+    const btnDown = document.createElement('button');
+    btnDown.textContent = '↓';
+    btnDown.title = 'Sposta giù';
+    btnDown.disabled = exIndex === day.exercises.length - 1;
+    btnDown.onclick = function() { moveExercise(dayIndex, exIndex, 1); };
+
     const btnEdit = document.createElement('button');
-    btnEdit.textContent = '✏️ Modifica'; btnEdit.onclick = function() { editExercise(dayIndex, exIndex); };
+    btnEdit.textContent = '✏️ Modifica';
+    btnEdit.onclick = function() { editExercise(dayIndex, exIndex); };
 
     const btnDel = document.createElement('button');
-    btnDel.textContent = '🗑 Elimina'; btnDel.onclick = function() { deleteExercise(dayIndex, exIndex); };
+    btnDel.textContent = '🗑 Elimina';
+    btnDel.onclick = function() { deleteExercise(dayIndex, exIndex); };
 
-    div.appendChild(btnEdit); div.appendChild(btnDel);
+    div.appendChild(btnUp);
+    div.appendChild(btnDown);
+    div.appendChild(btnEdit);
+    div.appendChild(btnDel);
     main.appendChild(div);
   });
 }
@@ -459,7 +512,8 @@ function addExercise(dayIndex) {
   const main = document.getElementById('mainContent');
   const defSets = data.settings.defaultSets || 3;
   const defReps = data.settings.defaultReps || 10;
-  main.innerHTML = '<button class="btn-back" onclick="manageExercises(' + dayIndex + ')">← Indietro</button>' +
+  main.innerHTML =
+    '<button class="btn-back" onclick="manageExercises(' + dayIndex + ')">← Indietro</button>' +
     '<h2>Nuovo Esercizio</h2>' +
     '<div class="card form-card">' +
     '<label>Nome</label><input type="text" id="exName" placeholder="es. Panca piana"><br>' +
@@ -473,7 +527,8 @@ function addExercise(dayIndex) {
 function editExercise(dayIndex, exIndex) {
   const ex = data.days[dayIndex].exercises[exIndex];
   const main = document.getElementById('mainContent');
-  main.innerHTML = '<button class="btn-back" onclick="manageExercises(' + dayIndex + ')">← Indietro</button>' +
+  main.innerHTML =
+    '<button class="btn-back" onclick="manageExercises(' + dayIndex + ')">← Indietro</button>' +
     '<h2>Modifica Esercizio</h2>' +
     '<div class="card form-card">' +
     '<label>Nome</label><input type="text" id="exName" value="' + ex.name + '"><br>' +
@@ -490,7 +545,7 @@ function saveExercise(dayIndex, exIndex) {
   const sets = parseInt(document.getElementById('exSets').value) || 3;
   const reps = parseInt(document.getElementById('exReps').value) || 10;
   const weight = parseFloat(document.getElementById('exWeight').value) || 0;
-  const ex = { name, sets, reps, weight };
+  const ex = { name: name, sets: sets, reps: reps, weight: weight };
   if (exIndex === -1) {
     data.days[dayIndex].exercises.push(ex);
   } else {
@@ -509,10 +564,22 @@ function deleteExercise(dayIndex, exIndex) {
   manageExercises(dayIndex);
 }
 
+function moveExercise(dayIndex, exIndex, direction) {
+  const exercises = data.days[dayIndex].exercises;
+  const newIndex = exIndex + direction;
+  if (newIndex < 0 || newIndex >= exercises.length) return;
+  const temp = exercises[exIndex];
+  exercises[exIndex] = exercises[newIndex];
+  exercises[newIndex] = temp;
+  saveData();
+  manageExercises(dayIndex);
+}
+
 // ======== IMPOSTAZIONI ========
 function showSettings() {
   const main = document.getElementById('mainContent');
-  main.innerHTML = '<h2>Impostazioni</h2>' +
+  main.innerHTML =
+    '<h2>Impostazioni</h2>' +
     '<div class="card form-card">' +
     '<label>Recupero tra serie (sec)</label><input type="number" id="restTimeInput" value="' + data.settings.restTime + '"><br>' +
     '<label>Recupero ultima serie (sec)</label><input type="number" id="lastSetTimeInput" value="' + data.settings.lastSetTime + '"><br>' +
@@ -520,7 +587,7 @@ function showSettings() {
     '<label>Ripetizioni di default</label><input type="number" id="defaultRepsInput" value="' + (data.settings.defaultReps || 10) + '">' +
     '</div>' +
     '<button onclick="saveSettings()">💾 Salva impostazioni</button>' +
-    '<h2 style="margin-top:24px">Dati</h2>' +
+    '<h2 style="margin-top:32px">Dati</h2>' +
     '<div class="card settings-data-card">' +
       '<p class="settings-desc">Esporta tutti i tuoi dati come backup JSON o importa un backup precedente.</p>' +
       '<div class="settings-data-btns">' +
@@ -548,7 +615,7 @@ function exportData() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'gymapp-backup-' + new Date().toLocaleDateString('it-IT').replace(/\//g, '-') + '.json';
+  a.download = 'gymapp-backup-' + new Date().toLocaleDateString('it-IT').replace(/\//g,'-') + '.json';
   a.click();
   URL.revokeObjectURL(url);
   showToast('📥 Backup esportato!');
@@ -623,6 +690,103 @@ function buildWeightChart() {
     dots + fl + ll + '</svg>';
 }
 
+function buildActivityCalendar() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const monthName = now.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
+
+  // Sessioni del mese corrente
+  const activeDays = new Set();
+  data.progress.forEach(function(p) {
+    if (!p.date) return;
+    const parts = p.date.split('/');
+    if (parts.length !== 3) return;
+    const d = new Date(parts[2]+'-'+parts[1]+'-'+parts[0]);
+    if (d.getFullYear() === year && d.getMonth() === month) {
+      activeDays.add(parseInt(parts[0]));
+    }
+  });
+
+  const firstDay = new Date(year, month, 1).getDay(); // 0=dom
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startOffset = (firstDay === 0) ? 6 : firstDay - 1; // Lun=0
+
+  const dayLabels = ['L','M','M','G','V','S','D'];
+  let html = '<div class="cal-month-label">' + monthName.charAt(0).toUpperCase() + monthName.slice(1) + '</div>';
+  html += '<div class="cal-grid">';
+
+  // Intestazioni
+  dayLabels.forEach(function(l) {
+    html += '<div class="cal-day-label">' + l + '</div>';
+  });
+
+  // Celle vuote iniziali
+  for (let i = 0; i < startOffset; i++) {
+    html += '<div class="cal-day cal-empty"></div>';
+  }
+
+  // Giorni
+  const today = now.getDate();
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isActive = activeDays.has(d);
+    const isToday = d === today;
+    let cls = 'cal-day';
+    if (isActive) cls += ' cal-active';
+    if (isToday) cls += ' cal-today';
+    html += '<div class="' + cls + '">' + d + '</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+
+function renderExerciseChart(exName) {
+  const container = document.getElementById('exChartContent');
+  if (!container) return;
+
+  // Raccoglie i pesi dell'esercizio da tutte le sessioni salvate
+  // Il peso esercizio viene salvato nell'oggetto day, non nella sessione
+  // Usiamo il peso corporeo come proxy per ora, ma mostriamo le sessioni del giorno
+  // In realtà mostriamo il peso dell'esercizio al momento del salvataggio
+  const points = [];
+  data.progress.forEach(function(p) {
+    const day = data.days.find(function(d) { return d.name === p.dayName; });
+    if (!day) return;
+    const ex = day.exercises.find(function(e) { return e.name === exName; });
+    if (!ex || ex.weight == null) return;
+    points.push({ date: p.date, weight: ex.weight });
+  });
+
+  if (points.length === 0) {
+    container.innerHTML = '<p style="font-size:0.78rem">Nessun dato disponibile per questo esercizio.</p>';
+    return;
+  }
+
+  if (points.length === 1) {
+    container.innerHTML = '<p style="font-size:0.78rem;color:#888">' + points[0].date + ': ' + points[0].weight + ' kg</p>';
+    return;
+  }
+
+  const W = 320, H = 100, PAD = 30;
+  const weights = points.map(function(p) { return p.weight; });
+  const minW = Math.min.apply(null, weights) - 1;
+  const maxW = Math.max.apply(null, weights) + 1;
+  function xi(i) { return PAD + (i / (points.length - 1)) * (W - PAD * 2); }
+  function yi(v) { return H - PAD - ((v - minW) / (maxW - minW)) * (H - PAD * 2); }
+  let polyline = points.map(function(p,i) { return xi(i)+','+yi(p.weight); }).join(' ');
+  let dots = points.map(function(p,i) {
+    return '<circle cx="'+xi(i)+'" cy="'+yi(p.weight)+'" r="3.5" fill="#2ecc71"><title>'+p.date+': '+p.weight+' kg</title></circle>';
+  }).join('');
+  const fl = '<text x="'+xi(0)+'" y="'+(yi(weights[0])-8)+'" fill="#2ecc71" font-size="9" text-anchor="middle">'+weights[0]+'kg</text>';
+  const ll = '<text x="'+xi(points.length-1)+'" y="'+(yi(weights[weights.length-1])-8)+'" fill="#2ecc71" font-size="9" text-anchor="middle">'+weights[weights.length-1]+'kg</text>';
+  container.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;overflow:visible">'+
+    '<polyline points="'+polyline+'" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linejoin="round"/>'+
+    dots + fl + ll + '</svg>';
+}
+
+
 function showProgress() {
   const main = document.getElementById('mainContent');
   main.innerHTML = '<h2>Progressi</h2>';
@@ -635,21 +799,53 @@ function showProgress() {
   // Stats
   const totalSessions = data.progress.length;
   const totalSeconds = data.progress.reduce(function(acc,p) { return acc + (p.durationSeconds||0); }, 0);
-  const avgSeconds = Math.round(totalSeconds / totalSessions);
   const statsDiv = document.createElement('div');
   statsDiv.className = 'stats-bar';
   statsDiv.innerHTML =
     '<div class="stat-item"><span class="stat-value">' + totalSessions + '</span><span class="stat-label">Sessioni</span></div>' +
     '<div class="stat-item"><span class="stat-value">' + formatTime(Math.round(totalSeconds/totalSessions)) + '</span><span class="stat-label">Media</span></div>' +
-    '<div class="stat-item"><span class="stat-value">' + formatTime(totalSeconds) + '</span><span class="stat-label">Tot. ore</span></div>';
+    '<div class="stat-item"><span class="stat-value">' + formatTime(totalSeconds) + '</span><span class="stat-label">Tot. tempo</span></div>';
   main.appendChild(statsDiv);
 
-  // Grafico peso corporeo
+  // Calendario attività
+  const calDiv = document.createElement('div');
+  calDiv.className = 'card activity-calendar-card';
+  calDiv.innerHTML = '<h3>📅 Attività mensile</h3>' + buildActivityCalendar();
+  main.appendChild(calDiv);
+
+  // Grafico peso
   if (data.progress.filter(function(p){return p.bodyWeightKg!=null;}).length >= 2) {
     const chartDiv = document.createElement('div');
     chartDiv.className = 'card weight-chart-card';
     chartDiv.innerHTML = '<h3>⚖️ Andamento peso corporeo</h3>' + buildWeightChart();
     main.appendChild(chartDiv);
+  }
+
+  // Storico pesi per esercizio
+  const allExNames = [];
+  data.days.forEach(function(d) {
+    if (d.exercises) d.exercises.forEach(function(ex) {
+      if (!allExNames.includes(ex.name)) allExNames.push(ex.name);
+    });
+  });
+
+  if (allExNames.length > 0) {
+    const exChartCard = document.createElement('div');
+    exChartCard.className = 'card weight-chart-card';
+    exChartCard.id = 'exChartCard';
+    const exOpts = allExNames.map(function(n) {
+      return '<option value="'+n+'">'+n+'</option>';
+    }).join('');
+    exChartCard.innerHTML =
+      '<h3>🏋️ Storico peso per esercizio</h3>' +
+      '<div class="filter-bar" style="margin-bottom:12px">' +
+        '<select id="exChartSelect" onchange="renderExerciseChart(this.value)">' +
+          exOpts +
+        '</select>' +
+      '</div>' +
+      '<div id="exChartContent"></div>';
+    main.appendChild(exChartCard);
+    renderExerciseChart(allExNames[0]);
   }
 
   // Filtro
@@ -674,7 +870,7 @@ function renderProgressList(filter) {
   if (!container) return;
   container.innerHTML = '';
 
-  let filtered = data.progress.map(function(p,i){return{p,i};}).reverse();
+  let filtered = data.progress.map(function(p,i){return {p:p,i:i};}).reverse();
   if (filter !== 'all') filtered = filtered.filter(function(obj){return obj.p.dayName===filter;});
   if (filtered.length === 0) { container.innerHTML = '<p>Nessuna sessione per questo filtro.</p>'; return; }
 
@@ -686,8 +882,10 @@ function renderProgressList(filter) {
 
   Object.keys(groups).forEach(function(dateKey) {
     const dh = document.createElement('div');
-    dh.className = 'date-header'; dh.textContent = '📅 ' + dateKey;
+    dh.className = 'date-header';
+    dh.textContent = '📅 ' + dateKey;
     container.appendChild(dh);
+
     groups[dateKey].forEach(function(obj) {
       const p = obj.p; const i = obj.i;
       const color = getDayColor(p.dayName);

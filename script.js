@@ -792,78 +792,143 @@ function showProgress() {
   main.innerHTML = '<h2>Progressi</h2>';
 
   if (!data.progress || data.progress.length === 0) {
-    main.innerHTML += '<p>Nessuna sessione salvata.</p>';
+    const empty = document.createElement('p');
+    empty.textContent = 'Nessuna sessione salvata.';
+    main.appendChild(empty);
     return;
   }
 
-  // Stats
-  const totalSessions = data.progress.length;
-  const totalSeconds = data.progress.reduce(function(acc,p) { return acc + (p.durationSeconds||0); }, 0);
-  const statsDiv = document.createElement('div');
-  statsDiv.className = 'stats-bar';
-  statsDiv.innerHTML =
-    '<div class="stat-item"><span class="stat-value">' + totalSessions + '</span><span class="stat-label">Sessioni</span></div>' +
-    '<div class="stat-item"><span class="stat-value">' + formatTime(Math.round(totalSeconds/totalSessions)) + '</span><span class="stat-label">Media</span></div>' +
-    '<div class="stat-item"><span class="stat-value">' + formatTime(totalSeconds) + '</span><span class="stat-label">Tot. tempo</span></div>';
-  main.appendChild(statsDiv);
+  // Sottomenu
+  const tabs = [
+    { key: 'riepilogo', icon: '📊', label: 'Riepilogo' },
+    { key: 'calendario', icon: '📅', label: 'Calendario' },
+    { key: 'peso', icon: '⚖️', label: 'Peso' },
+    { key: 'esercizi', icon: '🏋️', label: 'Esercizi' },
+    { key: 'sessioni', icon: '📋', label: 'Sessioni' },
+  ];
 
-  // Calendario attività
-  const calDiv = document.createElement('div');
-  calDiv.className = 'card activity-calendar-card';
-  calDiv.innerHTML = '<h3>📅 Attività mensile</h3>' + buildActivityCalendar();
-  main.appendChild(calDiv);
-
-  // Grafico peso
-  if (data.progress.filter(function(p){return p.bodyWeightKg!=null;}).length >= 2) {
-    const chartDiv = document.createElement('div');
-    chartDiv.className = 'card weight-chart-card';
-    chartDiv.innerHTML = '<h3>⚖️ Andamento peso corporeo</h3>' + buildWeightChart();
-    main.appendChild(chartDiv);
-  }
-
-  // Storico pesi per esercizio
-  const allExNames = [];
-  data.days.forEach(function(d) {
-    if (d.exercises) d.exercises.forEach(function(ex) {
-      if (!allExNames.includes(ex.name)) allExNames.push(ex.name);
-    });
+  const subNav = document.createElement('div');
+  subNav.className = 'progress-subnav';
+  subNav.id = 'progressSubnav';
+  tabs.forEach(function(t) {
+    const btn = document.createElement('button');
+    btn.className = 'progress-subnav-btn';
+    btn.id = 'psbtn_' + t.key;
+    btn.innerHTML = '<span>' + t.icon + '</span><span>' + t.label + '</span>';
+    btn.onclick = function() { showProgressTab(t.key); };
+    subNav.appendChild(btn);
   });
+  main.appendChild(subNav);
 
-  if (allExNames.length > 0) {
-    const exChartCard = document.createElement('div');
-    exChartCard.className = 'card weight-chart-card';
-    exChartCard.id = 'exChartCard';
-    const exOpts = allExNames.map(function(n) {
-      return '<option value="'+n+'">'+n+'</option>';
-    }).join('');
-    exChartCard.innerHTML =
-      '<h3>🏋️ Storico peso per esercizio</h3>' +
-      '<div class="filter-bar" style="margin-bottom:12px">' +
-        '<select id="exChartSelect" onchange="renderExerciseChart(this.value)">' +
-          exOpts +
-        '</select>' +
-      '</div>' +
-      '<div id="exChartContent"></div>';
-    main.appendChild(exChartCard);
-    renderExerciseChart(allExNames[0]);
+  const content = document.createElement('div');
+  content.id = 'progressTabContent';
+  main.appendChild(content);
+
+  showProgressTab('riepilogo');
+}
+
+function showProgressTab(tab) {
+  const content = document.getElementById('progressTabContent');
+  if (!content) return;
+  content.innerHTML = '';
+
+  // Aggiorna bottoni attivi
+  document.querySelectorAll('.progress-subnav-btn').forEach(function(btn) {
+    btn.classList.remove('active');
+  });
+  const activeBtn = document.getElementById('psbtn_' + tab);
+  if (activeBtn) activeBtn.classList.add('active');
+
+  if (tab === 'riepilogo') {
+    const totalSessions = data.progress.length;
+    const totalSeconds = data.progress.reduce(function(acc,p) { return acc + (p.durationSeconds||0); }, 0);
+    const statsDiv = document.createElement('div');
+    statsDiv.className = 'stats-bar';
+    statsDiv.innerHTML =
+      '<div class="stat-item"><span class="stat-value">' + totalSessions + '</span><span class="stat-label">Sessioni</span></div>' +
+      '<div class="stat-item"><span class="stat-value">' + formatTime(Math.round(totalSeconds/totalSessions)) + '</span><span class="stat-label">Media</span></div>' +
+      '<div class="stat-item"><span class="stat-value">' + formatTime(totalSeconds) + '</span><span class="stat-label">Tot. tempo</span></div>';
+    content.appendChild(statsDiv);
+
+    // Scheda più usata
+    const countByDay = {};
+    data.progress.forEach(function(p) { countByDay[p.dayName] = (countByDay[p.dayName] || 0) + 1; });
+    const topDay = Object.keys(countByDay).sort(function(a,b){return countByDay[b]-countByDay[a];})[0];
+    if (topDay) {
+      const topDiv = document.createElement('div');
+      topDiv.className = 'card';
+      topDiv.innerHTML = '<h3>🏆 Scheda più allenata</h3>' +
+        '<span style="color:#e63946;font-weight:700;font-size:1rem">' + topDay + '</span>' +
+        '<span style="color:#555;font-size:0.78rem;margin-left:8px">' + countByDay[topDay] + ' sessioni</span>';
+      content.appendChild(topDiv);
+    }
   }
 
-  // Filtro
-  const days = [...new Set(data.progress.map(function(p){return p.dayName;}))];
-  const filterDiv = document.createElement('div');
-  filterDiv.className = 'filter-bar';
-  let opts = '<option value="all">Tutte le schede</option>';
-  days.forEach(function(d) { opts += '<option value="'+d+'">'+d+'</option>'; });
-  filterDiv.innerHTML = '<label>Scheda:</label><select id="filterDay" onchange="renderProgressList(this.value)">' + opts + '</select>';
-  main.appendChild(filterDiv);
+  else if (tab === 'calendario') {
+    const calDiv = document.createElement('div');
+    calDiv.className = 'card activity-calendar-card';
+    calDiv.innerHTML = '<h3>📅 Attività mensile</h3>' + buildActivityCalendar();
+    content.appendChild(calDiv);
+  }
 
-  const listContainer = document.createElement('div');
-  listContainer.className = 'progress-list';
-  listContainer.id = 'progressList';
-  main.appendChild(listContainer);
+  else if (tab === 'peso') {
+    if (data.progress.filter(function(p){return p.bodyWeightKg!=null;}).length >= 2) {
+      const chartDiv = document.createElement('div');
+      chartDiv.className = 'card weight-chart-card';
+      chartDiv.innerHTML = '<h3>⚖️ Andamento peso corporeo</h3>' + buildWeightChart();
+      content.appendChild(chartDiv);
+    } else {
+      const p = document.createElement('p');
+      p.textContent = 'Registra almeno 2 sessioni con peso corporeo per vedere il grafico.';
+      content.appendChild(p);
+    }
+  }
 
-  renderProgressList('all');
+  else if (tab === 'esercizi') {
+    const allExNames = [];
+    data.days.forEach(function(d) {
+      if (d.exercises) d.exercises.forEach(function(ex) {
+        if (!allExNames.includes(ex.name)) allExNames.push(ex.name);
+      });
+    });
+    if (allExNames.length > 0) {
+      const exChartCard = document.createElement('div');
+      exChartCard.className = 'card weight-chart-card';
+      const exOpts = allExNames.map(function(n) {
+        return '<option value="'+n+'">'+n+'</option>';
+      }).join('');
+      exChartCard.innerHTML =
+        '<h3>🏋️ Storico peso per esercizio</h3>' +
+        '<div class="filter-bar" style="margin-bottom:12px">' +
+          '<select id="exChartSelect" onchange="renderExerciseChart(this.value)">' + exOpts + '</select>' +
+        '</div>' +
+        '<div id="exChartContent"></div>';
+      content.appendChild(exChartCard);
+      renderExerciseChart(allExNames[0]);
+    } else {
+      const p = document.createElement('p');
+      p.textContent = 'Nessun esercizio trovato.';
+      content.appendChild(p);
+    }
+  }
+
+  else if (tab === 'sessioni') {
+    const days = [...new Set(data.progress.map(function(p){return p.dayName;}))];
+    const filterDiv = document.createElement('div');
+    filterDiv.className = 'filter-bar';
+    let opts = '<option value="all">Tutte le schede</option>';
+    days.forEach(function(d) { opts += '<option value="'+d+'">'+d+'</option>'; });
+    filterDiv.innerHTML = '<label>Scheda:</label><select id="filterDay" onchange="renderProgressList(this.value)">' + opts + '</select>';
+    content.appendChild(filterDiv);
+
+    const listContainer = document.createElement('div');
+    listContainer.className = 'progress-list';
+    listContainer.id = 'progressList';
+    content.appendChild(listContainer);
+    renderProgressList('all');
+  }
 }
+
 
 function renderProgressList(filter) {
   const container = document.getElementById('progressList');

@@ -911,3 +911,55 @@ p { color: #333; font-size: 0.88rem; padding: 12px 0; font-style: italic; }
   margin-bottom: 5px;
   line-height: 1.4;
 }
+
+/* ======== PROGRESS SUBNAV ======== */
+.progress-subnav {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.progress-subnav::-webkit-scrollbar { display: none; }
+
+.progress-subnav-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  color: #444;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.18s;
+  box-shadow: none;
+  transform: none;
+}
+
+.progress-subnav-btn span:first-child {
+  font-size: 1.1rem;
+}
+
+.progress-subnav-btn:hover {
+  background: rgba(255,255,255,0.06);
+  color: #888;
+  transform: none;
+  border-color: rgba(255,255,255,0.12);
+}
+
+.progress-subnav-btn.active {
+  background: rgba(230,57,70,0.12);
+  border-color: rgba(230,57,70,0.35);
+  color: #e63946;
+  box-shadow: 0 0 12px rgba(230,57,70,0.15);
+}

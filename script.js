@@ -284,7 +284,17 @@ function updateWeight(dayIndex, exIndex, value) {
 // ======== SALVA SESSIONE ========
 function saveSession(dayIndex) {
   const day = data.days[dayIndex];
-  const duration = dayElapsed[dayIndex] || 0;
+  let duration = dayElapsed[dayIndex] || 0;
+
+  // Se il timer non è stato avviato, chiede la durata manualmente
+  if (duration === 0) {
+    const durStr = prompt('Durata allenamento (minuti):', '');
+    if (durStr === null) return;
+    const durMins = parseFloat(durStr.replace(',', '.'));
+    if (durStr.trim() !== '' && !isNaN(durMins)) {
+      duration = Math.round(durMins * 60);
+    }
+  }
 
   const weightStr = prompt('Peso corporeo oggi (kg):', '');
   if (weightStr === null) return;
@@ -913,6 +923,12 @@ function showProgressTab(tab) {
   }
 
   else if (tab === 'sessioni') {
+    // Bottone inserimento manuale
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '➕ Inserimento manuale';
+    addBtn.onclick = showManualEntry;
+    content.appendChild(addBtn);
+
     const days = [...new Set(data.progress.map(function(p){return p.dayName;}))];
     const filterDiv = document.createElement('div');
     filterDiv.className = 'filter-bar';
@@ -973,6 +989,81 @@ function renderProgressList(filter) {
     });
   });
 }
+
+function showManualEntry() {
+  const main = document.getElementById('mainContent');
+  main.innerHTML = '<h2>Inserimento manuale</h2>';
+  const backBtn = document.createElement('button');
+  backBtn.className = 'btn-back';
+  backBtn.textContent = '← Indietro';
+  backBtn.onclick = function() { showTab('progressi'); };
+  main.insertBefore(backBtn, main.firstChild);
+
+  // Opzioni schede
+  let dayOpts = '';
+  if (data.days && data.days.length > 0) {
+    data.days.forEach(function(d) {
+      dayOpts += '<option value="' + d.name + '">' + d.name + '</option>';
+    });
+  } else {
+    dayOpts = '<option value="Allenamento">Allenamento</option>';
+  }
+
+  const now = new Date();
+  const todayDate = now.toLocaleDateString('it-IT');
+  const todayTime = now.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
+
+  const form = document.createElement('div');
+  form.className = 'card form-card';
+  form.innerHTML =
+    '<label>Scheda</label>' +
+    '<select id="manualDay">' + dayOpts + '</select><br>' +
+    '<label>Data (gg/mm/aaaa)</label>' +
+    '<input type="text" id="manualDate" value="' + todayDate + '"><br>' +
+    '<label>Ora</label>' +
+    '<input type="text" id="manualTime" value="' + todayTime + '"><br>' +
+    '<label>Durata (minuti)</label>' +
+    '<input type="number" id="manualDuration" value="60" min="0"><br>' +
+    '<label>Peso corporeo (kg, opzionale)</label>' +
+    '<input type="number" id="manualWeight" placeholder="es. 75.5" min="0" step="0.1"><br>' +
+    '<label>Nota (opzionale)</label>' +
+    '<input type="text" id="manualNote" placeholder="es. Ottimo allenamento">';
+  main.appendChild(form);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = '💾 Salva sessione';
+  saveBtn.onclick = saveManualEntry;
+  main.appendChild(saveBtn);
+}
+
+function saveManualEntry() {
+  const dayName = document.getElementById('manualDay').value;
+  const date = document.getElementById('manualDate').value.trim();
+  const time = document.getElementById('manualTime').value.trim();
+  const durationMins = parseFloat(document.getElementById('manualDuration').value) || 0;
+  const weightVal = document.getElementById('manualWeight').value.trim();
+  const note = document.getElementById('manualNote').value.trim();
+
+  if (!date) { showToast('❌ Inserisci una data.', 'error'); return; }
+
+  const bodyWeight = weightVal === '' ? null : parseFloat(weightVal.replace(',', '.'));
+  if (weightVal !== '' && isNaN(bodyWeight)) { showToast('❌ Peso non valido.', 'error'); return; }
+
+  const entry = {
+    date: date,
+    time: time,
+    dayName: dayName,
+    durationSeconds: Math.round(durationMins * 60),
+    bodyWeightKg: bodyWeight,
+    note: note
+  };
+
+  data.progress.push(entry);
+  saveData();
+  showToast('✅ Sessione salvata!');
+  showTab('progressi');
+}
+
 
 function deleteSession(i) {
   if (!confirm('Eliminare questa sessione?')) return;

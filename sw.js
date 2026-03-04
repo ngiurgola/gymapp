@@ -1,10 +1,10 @@
-const CACHE_NAME = 'gymapp-v1';
+const CACHE_NAME = 'gymapp-v2';
 const ASSETS = [
-  '/gymapp/',
-  '/gymapp/index.html',
-  '/gymapp/script.js',
-  '/gymapp/style.css',
-  '/gymapp/sounds/beep.mp3'
+  './',
+  './index.html',
+  './script.js',
+  './style.css',
+  './sounds/beep.mp3'
 ];
 
 self.addEventListener('install', function(e) {
@@ -13,18 +13,19 @@ self.addEventListener('install', function(e) {
       return cache.addAll(ASSETS);
     })
   );
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', function(e) {
   e.waitUntil(
     caches.keys().then(function(keys) {
-      return Promise.all(keys.filter(function(k) {
-        return k !== CACHE_NAME;
-      }).map(function(k) {
-        return caches.delete(k);
-      }));
+      return Promise.all(
+        keys.filter(function(k) { return k !== CACHE_NAME; })
+            .map(function(k) { return caches.delete(k); })
+      );
     })
   );
+  self.clients.claim();
 });
 
 self.addEventListener('fetch', function(e) {

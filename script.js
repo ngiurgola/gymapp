@@ -1,3 +1,32 @@
+var _dayColorCache = {};
+
+// ======== TEMI GLOBALI ========
+var THEMES_DATA = [
+  { id:'crimson', name:'Crimson', desc:'Rosso fuoco — default',  accent:'#e63946', accentRgb:'230,57,70',  bg:'#080808', bgGradient:'radial-gradient(ellipse 80% 40% at 50% -10%, rgba(230,57,70,0.12) 0%, transparent 70%)',  preview:['#080808','#e63946','#141414'], cardBg:'linear-gradient(145deg,#141414,#111)',   cardBorder:'rgba(255,255,255,0.06)' },
+  { id:'ocean',   name:'Ocean',   desc:'Blu notte profondo',     accent:'#4cc9f0', accentRgb:'76,201,240', bg:'#060a12', bgGradient:'radial-gradient(ellipse 80% 40% at 50% -10%, rgba(76,201,240,0.1) 0%, transparent 70%)',   preview:['#060a12','#4cc9f0','#0d1220'], cardBg:'linear-gradient(145deg,#0d1220,#0a0e18)', cardBorder:'rgba(76,201,240,0.08)' },
+  { id:'forest',  name:'Forest',  desc:'Verde scuro naturale',   accent:'#2ecc71', accentRgb:'46,204,113', bg:'#060c08', bgGradient:'radial-gradient(ellipse 80% 40% at 50% -10%, rgba(46,204,113,0.1) 0%, transparent 70%)',  preview:['#060c08','#2ecc71','#0d150f'], cardBg:'linear-gradient(145deg,#0d150f,#0a120c)', cardBorder:'rgba(46,204,113,0.08)' },
+  { id:'galaxy',  name:'Galaxy',  desc:'Viola cosmico',          accent:'#9b59b6', accentRgb:'155,89,182', bg:'#08060c', bgGradient:'radial-gradient(ellipse 80% 40% at 50% -10%, rgba(155,89,182,0.12) 0%, transparent 70%)', preview:['#08060c','#9b59b6','#110d18'], cardBg:'linear-gradient(145deg,#110d18,#0e0a14)', cardBorder:'rgba(155,89,182,0.08)' },
+  { id:'gold',    name:'Gold',    desc:'Oro elegante',           accent:'#f1c40f', accentRgb:'241,196,15', bg:'#0c0b06', bgGradient:'radial-gradient(ellipse 80% 40% at 50% -10%, rgba(241,196,15,0.1) 0%, transparent 70%)',  preview:['#0c0b06','#f1c40f','#151300'], cardBg:'linear-gradient(145deg,#151300,#110f00)',  cardBorder:'rgba(241,196,15,0.08)' },
+];
+
+// ======== BADGE ========
+var BADGES = [
+  { id:'first',    icon:'🎉', name:'Prima sessione',      desc:'Hai completato il tuo primo allenamento!',       check: function(p) { return p.length >= 1; } },
+  { id:'s5',       icon:'⚡', name:'5 sessioni',           desc:'5 allenamenti completati!',                      check: function(p) { return p.length >= 5; } },
+  { id:'s10',      icon:'💪', name:'10 sessioni',          desc:'10 allenamenti completati!',                     check: function(p) { return p.length >= 10; } },
+  { id:'s25',      icon:'🏅', name:'25 sessioni',          desc:'25 allenamenti completati!',                     check: function(p) { return p.length >= 25; } },
+  { id:'s50',      icon:'🏆', name:'50 sessioni',          desc:'50 allenamenti completati!',                     check: function(p) { return p.length >= 50; } },
+  { id:'streak7',  icon:'🔥', name:'Streak 7 giorni',     desc:'7 allenamenti consecutivi!',                     check: function(p) { return calcStreak() >= 7; } },
+  { id:'streak14', icon:'🌟', name:'Streak 14 giorni',    desc:'14 allenamenti consecutivi, sei una macchina!',  check: function(p) { return calcStreak() >= 14; } },
+  { id:'variety',  icon:'🎯', name:'Allenatore completo', desc:'Hai allenato almeno 3 schede diverse!',          check: function(p) { return new Set(p.map(function(x){ return x.dayName; })).size >= 3; } },
+];
+
+// Helper: converte 'dd/mm/yyyy' in Date
+function parseDate(str) {
+  var p = str.split('/');
+  return new Date(p[2] + '-' + p[1] + '-' + p[0]);
+}
+
 // ======== SERVICE WORKER ========
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
@@ -167,11 +196,11 @@ window.addEventListener('beforeunload', function(e) {
 // ======== INIT ========
 loadData();
 
-// Applica colore accent salvato
+// Applica tema salvato all'avvio
 (function() {
-  const c = localStorage.getItem('gymAccentColor');
-  const r = localStorage.getItem('gymAccentRgb');
-  if (c && r) applyAccentColor(c, r);
+  const savedId = localStorage.getItem('gymThemeId') || 'crimson';
+  const t = THEMES_DATA.find(function(x){ return x.id === savedId; }) || THEMES_DATA[0];
+  applyTheme(t);
 })();
 
 // Icone navbar
@@ -179,8 +208,8 @@ loadData();
   const labels = [
     { icon: '🏋️', text: 'Allenamento' },
     { icon: '📋', text: 'Schede' },
-    { icon: '⚙️', text: 'Impostazioni' },
-    { icon: '📊', text: 'Progressi' }
+    { icon: '📊', text: 'Progressi' },
+    { icon: '⚙️', text: 'Impostazioni' }
   ];
   const btns = document.querySelectorAll('.navbar button');
   btns.forEach(function(btn, i) {
@@ -206,8 +235,8 @@ function showTab(tab) {
     switch(tab) {
       case 'allenamento': showWorkout(); buttons[0].classList.add('active'); break;
       case 'giorni':      showManageDays(); buttons[1].classList.add('active'); break;
-      case 'impostazioni':showSettings(); buttons[2].classList.add('active'); break;
-      case 'progressi':   showProgress(); buttons[3].classList.add('active'); break;
+      case 'progressi':   showProgress(); buttons[2].classList.add('active'); break;
+      case 'impostazioni':showSettings(); buttons[3].classList.add('active'); break;
     }
   }
   if (hasActiveTimers()) {
@@ -264,8 +293,11 @@ function showWorkout() {
   data.days.forEach(function(day, dayIndex) {
     const div = document.createElement('div');
     div.className = 'card';
+    const dayColor = getDayColor(day.name);
+    div.style.borderLeft = '4px solid ' + dayColor;
     const h3 = document.createElement('h3');
     h3.textContent = day.name;
+    h3.style.color = dayColor;
     div.appendChild(h3);
 
     // Info sessioni
@@ -350,7 +382,15 @@ function startDay(dayIndex) {
       if (history.length > 0) weightHistory = '<div class="weight-history">' + history.join(' &nbsp;|&nbsp; ') + '</div>';
     }
 
-    let inner = '<strong>' + ex.name + '</strong>' + weightHistory +
+    // Info button - cerca nel DB
+    const dbEntry = EXERCISE_DB.find(function(e){ return e.name === ex.name; });
+    const infoBtn = dbEntry ? '<button onclick="showExerciseInfo(this)" data-exname="' + ex.name.replace(/"/g,"&quot;") + '" style="background:none;border:1px solid rgba(255,255,255,0.15);border-radius:50%;width:22px;height:22px;color:#aaa;font-size:0.65rem;font-weight:700;padding:0;min-width:unset;display:inline-flex;align-items:center;justify-content:center;margin-left:6px;vertical-align:middle;">i</button>' : '';
+
+    const repsLabel = ex.reps === 'max'
+      ? '<div style="font-size:0.75rem;color:#f39c12;font-weight:700;margin-bottom:6px;">🔥 ' + ex.sets + ' serie al massimo</div>'
+      : '<div style="font-size:0.75rem;color:#aaa;margin-bottom:6px;">' + ex.sets + ' serie × ' + ex.reps + ' rip</div>';
+
+    let inner = '<strong>' + ex.name + infoBtn + '</strong>' + repsLabel + weightHistory +
       '<div class="weight-row">' +
         '<button class="btn-weight-adj" onclick="adjustWeight(' + dayIndex + ',' + exIndex + ',-2.5)">-2.5</button>' +
         '<input type="number" id="weight_' + dayIndex + '_' + exIndex + '" value="' + (ex.weight||0) + '" oninput="updateWeight(' + dayIndex + ',' + exIndex + ',this.value)" min="0" step="0.5">' +
@@ -389,6 +429,34 @@ function formatTime(seconds) {
   return m + ':' + (s < 10 ? '0' : '') + s;
 }
 
+function showRestOverlay(seconds, label) {
+  var existing = document.getElementById('restOverlay');
+  if (existing) existing.remove();
+  var overlay = document.createElement('div');
+  overlay.id = 'restOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9990;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:manipulation;';
+  var remaining = seconds;
+  function render() {
+    overlay.innerHTML =
+      '<div style="font-size:0.8rem;color:#888;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;">' + (label || 'Recupero') + '</div>' +
+      '<div style="font-size:5rem;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums;text-shadow:0 0 40px rgba(var(--accent-rgb),0.5);">' + remaining + '</div>' +
+      '<div style="color:#555;font-size:0.8rem;margin-top:16px;">Tocca per chiudere</div>';
+  }
+  render();
+  var iv = setInterval(function() {
+    remaining--;
+    var el = overlay.querySelector('div:nth-child(2)');
+    if (el) el.textContent = remaining;
+    if (remaining <= 0) {
+      clearInterval(iv);
+      overlay.remove();
+      playBeep();
+    }
+  }, 1000);
+  overlay.addEventListener('click', function() { clearInterval(iv); overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
 function startTimer(dayIndex, exIndex, setIndex, totalSeconds) {
   const key = dayIndex + '_' + exIndex + '_' + setIndex;
   if (activeTimers[key]) return;
@@ -396,6 +464,7 @@ function startTimer(dayIndex, exIndex, setIndex, totalSeconds) {
   if (el && el.dataset.done === 'true') return;
   let remaining = totalSeconds;
   if (el) el.classList.add('timer-running');
+  showRestOverlay(totalSeconds, 'Recupero serie');
   activeTimers[key] = setInterval(function() {
     remaining--;
     if (el) el.textContent = formatTime(remaining);
@@ -564,6 +633,7 @@ function confirmSaveSession(entry) {
   releaseWakeLock();
   data.progress.push(entry);
   saveData();
+  checkBadges();
   showToast('Sessione salvata!');
   showWorkout();
 }
@@ -899,8 +969,20 @@ function addExercise(dayIndex) {
   card.innerHTML =
     '<label>Nome</label><input type="text" id="exName" placeholder="es. Panca piana"><br>' +
     '<label>Serie</label><input type="number" id="exSets" value="' + defSets + '" min="1"><br>' +
-    '<label>Ripetizioni</label><input type="number" id="exReps" value="' + defReps + '" min="1"><br>' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">' +
+    '<label style="margin-bottom:0">Ripetizioni</label>' +
+    '<label style="display:flex;align-items:center;gap:5px;font-size:0.75rem;color:#aaa;text-transform:none;letter-spacing:0;font-weight:600;margin-bottom:0;">' +
+    '<input type="checkbox" id="exMaxCheck"> MAX' +
+    '</label></div>' +
+    '<input type="number" id="exReps" value="' + defReps + '" min="1"><br>' +
     '<label>Peso (kg)</label><input type="number" id="exWeight" value="0" min="0">';
+  // MAX checkbox toggle
+  var maxChk = card.querySelector('#exMaxCheck');
+  var repsInput = card.querySelector('#exReps');
+  maxChk.onchange = function() {
+    repsInput.disabled = maxChk.checked;
+    repsInput.style.opacity = maxChk.checked ? '0.3' : '1';
+  };
   main.appendChild(card);
 
   const saveBtn = document.createElement('button');
@@ -923,11 +1005,23 @@ function editExercise(dayIndex, exIndex) {
   main.appendChild(title);
   const card = document.createElement('div');
   card.className = 'card form-card';
+  const isMax = ex.reps === 'max';
   card.innerHTML =
     '<label>Nome</label><input type="text" id="exName" value="' + ex.name + '"><br>' +
     '<label>Serie</label><input type="number" id="exSets" value="' + ex.sets + '" min="1"><br>' +
-    '<label>Ripetizioni</label><input type="number" id="exReps" value="' + ex.reps + '" min="1"><br>' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">' +
+    '<label style="margin-bottom:0">Ripetizioni</label>' +
+    '<label style="display:flex;align-items:center;gap:5px;font-size:0.75rem;color:#aaa;text-transform:none;letter-spacing:0;font-weight:600;margin-bottom:0;">' +
+    '<input type="checkbox" id="exMaxCheck"' + (isMax ? ' checked' : '') + '> MAX' +
+    '</label></div>' +
+    '<input type="number" id="exReps" value="' + (isMax ? 10 : ex.reps) + '" min="1"' + (isMax ? ' disabled style="opacity:0.3"' : '') + '><br>' +
     '<label>Peso (kg)</label><input type="number" id="exWeight" value="' + (ex.weight||0) + '" min="0">';
+  var maxChkE = card.querySelector('#exMaxCheck');
+  var repsInputE = card.querySelector('#exReps');
+  maxChkE.onchange = function() {
+    repsInputE.disabled = maxChkE.checked;
+    repsInputE.style.opacity = maxChkE.checked ? '0.3' : '1';
+  };
   main.appendChild(card);
   const saveBtn = document.createElement('button');
   saveBtn.textContent = 'Salva';
@@ -939,7 +1033,8 @@ function saveExercise(dayIndex, exIndex) {
   const name = document.getElementById('exName').value.trim();
   if (!name) { showToast('Inserisci un nome.', 'error'); return; }
   const sets  = parseInt(document.getElementById('exSets').value) || 3;
-  const reps  = parseInt(document.getElementById('exReps').value) || 10;
+  const isMax = document.getElementById('exMaxCheck') && document.getElementById('exMaxCheck').checked;
+  const reps  = isMax ? 'max' : (parseInt(document.getElementById('exReps').value) || 10);
   const weight = parseFloat(document.getElementById('exWeight').value) || 0;
   const ex = { name: name, sets: sets, reps: reps, weight: weight };
   if (exIndex === -1) data.days[dayIndex].exercises.push(ex);
@@ -960,6 +1055,19 @@ function deleteExercise(dayIndex, exIndex) {
 
 // ======== IMPOSTAZIONI ========
 
+function applyTheme(theme) {
+  document.documentElement.style.setProperty('--accent', theme.accent);
+  document.documentElement.style.setProperty('--accent-rgb', theme.accentRgb);
+  document.documentElement.style.setProperty('--bg', theme.bg);
+  document.documentElement.style.setProperty('--bg-gradient', theme.bgGradient);
+  document.documentElement.style.setProperty('--card-bg', theme.cardBg || 'linear-gradient(145deg,#141414,#111)');
+  document.documentElement.style.setProperty('--card-border', theme.cardBorder || 'rgba(255,255,255,0.06)');
+  document.body.style.backgroundColor = theme.bg;
+  document.body.style.backgroundImage = theme.bgGradient;
+  localStorage.setItem('gymAccentColor', theme.accent);
+  localStorage.setItem('gymAccentRgb', theme.accentRgb);
+}
+
 function applyAccentColor(color, rgb) {
   document.documentElement.style.setProperty('--accent', color);
   document.documentElement.style.setProperty('--accent-rgb', rgb);
@@ -968,6 +1076,7 @@ function showSettings() {
   const main = document.getElementById('mainContent');
   main.innerHTML = '';
 
+  // --- IMPOSTAZIONI ---
   const title = document.createElement('h2');
   title.textContent = 'Impostazioni';
   main.appendChild(title);
@@ -986,87 +1095,71 @@ function showSettings() {
   saveBtn.onclick = saveSettings;
   main.appendChild(saveBtn);
 
-  // Sezione dati
-  const h2data = document.createElement('h2');
-  h2data.style.marginTop = '32px';
-  h2data.textContent = 'Dati';
-  main.appendChild(h2data);
-
-  // Database Esercizi card
-  const cardDB = document.createElement('div'); cardDB.className = 'card settings-data-card';
-  cardDB.innerHTML = '<p class="settings-desc">Sfoglia oltre 40 esercizi con consigli tecnici e aggiungili alle tue schede.</p>' +
-    '<button onclick="showExerciseDB()" style="background:rgba(243,156,18,0.08);color:#f39c12;border:1px solid rgba(243,156,18,0.25);border-radius:10px;padding:8px 16px;font-size:0.75rem;font-weight:700;">📚 Apri Database Esercizi</button>';
-  main.appendChild(cardDB);
-
-  const cardData = document.createElement('div');
-  cardData.className = 'card settings-data-card';
-  cardData.innerHTML = '<p class="settings-desc">Esporta tutti i tuoi dati come backup JSON o importa un backup precedente.</p>' +
-    '<div class="settings-data-btns">' +
-    '<button onclick="exportData()" class="btn-export">Esporta backup</button>' +
-    '<label class="btn-import">Importa backup<input type="file" accept=".json" onchange="importData(event)" style="display:none"></label>' +
-    '</div>';
-  main.appendChild(cardData);
-
-  // --- Color picker ---
+  // --- TEMA ---
   const h2color = document.createElement('h2');
   h2color.style.marginTop = '32px';
   h2color.textContent = 'Tema';
   main.appendChild(h2color);
 
-  const cardColor = document.createElement('div');
-  cardColor.className = 'card settings-data-card';
+  const THEMES = THEMES_DATA;
 
-  const colorDesc = document.createElement('p');
-  colorDesc.className = 'settings-desc';
-  colorDesc.textContent = 'Scegli il colore principale dell\'app.';
-  cardColor.appendChild(colorDesc);
+  const currentThemeId = localStorage.getItem('gymThemeId') || 'crimson';
 
-  const accentColors = [
-    { name: 'Rosso',     value: '#e63946', rgb: '230,57,70' },
-    { name: 'Blu',       value: '#4cc9f0', rgb: '76,201,240' },
-    { name: 'Verde',     value: '#2ecc71', rgb: '46,204,113' },
-    { name: 'Arancio',   value: '#f39c12', rgb: '243,156,18' },
-    { name: 'Viola',     value: '#9b59b6', rgb: '155,89,182' },
-    { name: 'Fucsia',    value: '#e91e8c', rgb: '233,30,140' },
-    { name: 'Ciano',     value: '#1abc9c', rgb: '26,188,156' },
-    { name: 'Giallo',    value: '#f1c40f', rgb: '241,196,15' },
-  ];
+  const cardTheme = document.createElement('div');
+  cardTheme.className = 'card settings-data-card';
+  const themeDesc = document.createElement('p');
+  themeDesc.className = 'settings-desc';
+  themeDesc.textContent = 'Scegli il tema visivo dell\'app.';
+  cardTheme.appendChild(themeDesc);
 
-  const currentAccent = localStorage.getItem('gymAccentColor') || '#e63946';
-  const currentRgb = localStorage.getItem('gymAccentRgb') || '230,57,70';
+  const themeGrid = document.createElement('div');
+  themeGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;';
 
-  const swatchRow = document.createElement('div');
-  swatchRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;';
+  THEMES.forEach(function(theme) {
+    const btn = document.createElement('button');
+    const isActive = currentThemeId === theme.id;
+    btn.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;text-align:left;' +
+      'background:' + (isActive ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)') + ';' +
+      'border:1px solid ' + (isActive ? '#fff' : 'rgba(255,255,255,0.08)') + ';' +
+      'cursor:pointer;transition:all 0.2s;width:100%;';
 
-  accentColors.forEach(function(c) {
-    const swatch = document.createElement('button');
-    const isActive = currentAccent === c.value;
-    swatch.style.cssText = 'width:36px;height:36px;border-radius:50%;border:3px solid ' +
-      (isActive ? '#fff' : 'transparent') + ';background:' + c.value +
-      ';cursor:pointer;transition:border 0.2s;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
-    swatch.title = c.name;
-    swatch.onclick = function() {
-      localStorage.setItem('gymAccentColor', c.value);
-      localStorage.setItem('gymAccentRgb', c.rgb);
-      applyAccentColor(c.value, c.rgb);
-      // Update all swatches border
-      swatchRow.querySelectorAll('button').forEach(function(b){ b.style.borderColor = 'transparent'; });
-      swatch.style.borderColor = '#fff';
-      showToast('Colore aggiornato!');
+    // Preview cerchietti
+    const preview = document.createElement('div');
+    preview.style.cssText = 'display:flex;gap:3px;flex-shrink:0;';
+    theme.preview.forEach(function(c) {
+      const dot = document.createElement('div');
+      dot.style.cssText = 'width:12px;height:12px;border-radius:50%;background:' + c + ';border:1px solid rgba(255,255,255,0.15);';
+      preview.appendChild(dot);
+    });
+
+    const info = document.createElement('div');
+    info.innerHTML = '<div style="font-size:0.78rem;font-weight:700;color:#fff;">' + theme.name + '</div>' +
+      '<div style="font-size:0.67rem;color:#888;">' + theme.desc + '</div>';
+
+    if (isActive) {
+      const check = document.createElement('div');
+      check.style.cssText = 'margin-left:auto;font-size:0.8rem;';
+      check.textContent = '✓';
+      info.appendChild(check);
+    }
+
+    btn.appendChild(preview);
+    btn.appendChild(info);
+
+    btn.onclick = function() {
+      localStorage.setItem('gymThemeId', theme.id);
+      applyTheme(theme);
+      showToast('Tema ' + theme.name + ' applicato!');
+      showSettings(); // refresh per aggiornare i bordi attivi
     };
-    swatchRow.appendChild(swatch);
+
+    themeGrid.appendChild(btn);
   });
 
-  cardColor.appendChild(swatchRow);
-  main.appendChild(cardColor);
+  cardTheme.appendChild(themeGrid);
+  main.appendChild(cardTheme);
 
-    const cardReset = document.createElement('div');
-  cardReset.className = 'card settings-data-card';
-  cardReset.innerHTML = '<p class="settings-desc">Cancella tutti i dati dell\'app (schede, esercizi e progressi).</p>' +
-    '<button onclick="resetAllData()" class="btn-danger">Reset completo</button>';
-  main.appendChild(cardReset);
-
-  // Inserimento manuale
+  // --- INSERIMENTO MANUALE ---
   const h2manual = document.createElement('h2');
   h2manual.style.marginTop = '32px';
   h2manual.textContent = 'Inserimento manuale';
@@ -1080,7 +1173,35 @@ function showSettings() {
   manualBtn.onclick = showManualEntry;
   cardManual.appendChild(manualBtn);
   main.appendChild(cardManual);
+
+  // --- DATI ---
+  const h2data = document.createElement('h2');
+  h2data.style.marginTop = '32px';
+  h2data.textContent = 'Dati';
+  main.appendChild(h2data);
+
+  const cardDB = document.createElement('div');
+  cardDB.className = 'card settings-data-card';
+  cardDB.innerHTML = '<p class="settings-desc">Sfoglia oltre 70 esercizi con consigli tecnici e aggiungili alle tue schede.</p>' +
+    '<button onclick="showExerciseDB()" style="background:rgba(243,156,18,0.08);color:#f39c12;border:1px solid rgba(243,156,18,0.25);border-radius:10px;padding:8px 16px;font-size:0.75rem;font-weight:700;">📚 Apri Database Esercizi</button>';
+  main.appendChild(cardDB);
+
+  const cardData = document.createElement('div');
+  cardData.className = 'card settings-data-card';
+  cardData.innerHTML = '<p class="settings-desc">Esporta tutti i tuoi dati come backup JSON o importa un backup precedente.</p>' +
+    '<div class="settings-data-btns">' +
+    '<button onclick="exportData()" class="btn-export">Esporta backup</button>' +
+    '<label class="btn-import">Importa backup<input type="file" accept=".json" onchange="importData(event)" style="display:none"></label>' +
+    '</div>';
+  main.appendChild(cardData);
+
+  const cardReset = document.createElement('div');
+  cardReset.className = 'card settings-data-card';
+  cardReset.innerHTML = '<p class="settings-desc">Cancella tutti i dati dell\'app (schede, esercizi e progressi).</p>' +
+    '<button onclick="resetAllData()" class="btn-danger">Reset completo</button>';
+  main.appendChild(cardReset);
 }
+
 
 function saveSettings() {
   data.settings.restTime    = parseInt(document.getElementById('restTimeInput').value) || 90;
@@ -1207,7 +1328,7 @@ function saveManualEntry() {
 
 // ======== PROGRESSI ========
 // Cache colori per dayName
-const _dayColorCache = {};
+
 function getDayColor(dayName) {
   if (_dayColorCache[dayName]) return _dayColorCache[dayName];
   const colors = ['#e63946','#4cc9f0','#2ecc71','#f39c12','#9b59b6','#e67e22','#1abc9c'];
@@ -1273,6 +1394,54 @@ function buildWeightChart(entries) {
     dots + '</svg>';
 }
 
+
+
+function checkBadges() {
+  if (!data.progress) return;
+  var earned = JSON.parse(localStorage.getItem('gymBadges') || '[]');
+  var newBadges = [];
+  BADGES.forEach(function(b) {
+    if (!earned.includes(b.id) && b.check(data.progress)) {
+      earned.push(b.id);
+      newBadges.push(b);
+    }
+  });
+  if (newBadges.length > 0) {
+    localStorage.setItem('gymBadges', JSON.stringify(earned));
+    newBadges.forEach(function(b) {
+      setTimeout(function() {
+        showToast(b.icon + ' Badge sbloccato: ' + b.name + '!');
+      }, 800);
+    });
+  }
+}
+
+function showBadgesPanel(container) {
+  var earned = JSON.parse(localStorage.getItem('gymBadges') || '[]');
+  var card = document.createElement('div');
+  card.className = 'card';
+  card.style.marginTop = '12px';
+  card.innerHTML = '<h3 style="font-size:0.78rem;color:#aaa;margin-bottom:12px;">🏅 BADGE</h3>';
+  var grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;';
+  BADGES.forEach(function(b) {
+    var isEarned = earned.includes(b.id);
+    var item = document.createElement('div');
+    item.style.cssText = 'text-align:center;padding:8px 4px;border-radius:10px;background:' +
+      (isEarned ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)') + ';' +
+      'border:1px solid ' + (isEarned ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)') + ';' +
+      'opacity:' + (isEarned ? '1' : '0.35') + ';cursor:' + (isEarned ? 'pointer' : 'default') + ';';
+    item.innerHTML = '<div style="font-size:1.3rem;">' + b.icon + '</div>' +
+      '<div style="font-size:0.6rem;color:#aaa;margin-top:3px;line-height:1.2;">' + b.name + '</div>';
+    if (isEarned) {
+      item.title = b.desc;
+    }
+    grid.appendChild(item);
+  });
+  card.appendChild(grid);
+  container.appendChild(card);
+}
+
 function showProgress() {
   const main = document.getElementById('mainContent');
   main.innerHTML = '';
@@ -1300,6 +1469,9 @@ function showProgress() {
     <div class="stat-item"><span class="stat-value">${formatTime(totalSeconds)}</span><span class="stat-label">Tot. tempo</span></div>
   `;
   main.appendChild(statsDiv);
+
+  checkBadges();
+  showBadgesPanel(main);
 
   // Tab buttons
   const tabsDiv = document.createElement('div');
@@ -1417,7 +1589,13 @@ function renderProgressList(filter) {
       delBtn.className = 'btn-delete-single';
       delBtn.textContent = '🗑';
       delBtn.onclick = function() { deleteSession(i); };
+      const dupBtn = document.createElement('button');
+      dupBtn.className = 'btn-delete-single';
+      dupBtn.textContent = '📋';
+      dupBtn.title = 'Duplica pesi su nuova sessione';
+      dupBtn.onclick = (function(session){ return function() { duplicateSessionWeights(session); }; })(p);
       header.appendChild(badge);
+      header.appendChild(dupBtn);
       header.appendChild(delBtn);
       div.appendChild(header);
 
@@ -1459,6 +1637,21 @@ function renderProgressList(filter) {
   container.appendChild(frag);
 }
 
+
+function duplicateSessionWeights(session) {
+  var day = data.days.find(function(d){ return d.name === session.dayName; });
+  if (!day) { showToast('Scheda non trovata.', 'error'); return; }
+  // Apply last session weights to day exercises
+  if (session.exercises) {
+    session.exercises.forEach(function(se) {
+      var ex = day.exercises.find(function(e){ return e.name === se.name; });
+      if (ex && se.weight != null) ex.weight = se.weight;
+    });
+    saveData();
+    showToast('✅ Pesi copiati su ' + session.dayName + '!');
+  }
+}
+
 function deleteSession(i) {
   modalConfirm('Eliminare questa sessione?', function() {
     data.progress.splice(i, 1);
@@ -1470,27 +1663,87 @@ function deleteSession(i) {
 
 // --- TAB PESO ---
 function renderWeightTab(container) {
-  const weightEntries = data.progress.filter(p => p.bodyWeightKg != null);
-  if (weightEntries.length < 2) {
+  const allWeightEntries = data.progress.filter(p => p.bodyWeightKg != null);
+  if (allWeightEntries.length < 2) {
     container.innerHTML = '<p>Registra almeno 2 sessioni con peso corporeo per vedere il grafico.</p>';
     return;
   }
-  const card = document.createElement('div');
-  card.className = 'card weight-chart-card';
-  card.innerHTML = '<h3>Andamento peso corporeo</h3>' + buildWeightChart(weightEntries);
-  container.appendChild(card);
 
-  // Tabella ultimi valori
-  const table = document.createElement('div');
-  table.style.cssText = 'margin-top:12px;font-size:0.82rem;';
-  const recent = weightEntries.slice(-10).reverse();
-  recent.forEach(p => {
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05)';
-    row.innerHTML = `<span>${p.date}</span><span style="color:#4cc9f0;font-weight:700">${p.bodyWeightKg} kg</span>`;
-    table.appendChild(row);
+  // Filtro periodo
+  const filterBar = document.createElement('div');
+  filterBar.className = 'filter-bar';
+  filterBar.style.marginBottom = '12px';
+  filterBar.innerHTML = '<label>Periodo</label>' +
+    '<select id="weightPeriodFilter">' +
+    '<option value="30">Ultimi 30 giorni</option>' +
+    '<option value="90">Ultimi 90 giorni</option>' +
+    '<option value="all" selected>Tutto</option>' +
+    '</select>';
+  container.appendChild(filterBar);
+
+  const chartContainer = document.createElement('div');
+  container.appendChild(chartContainer);
+
+  function renderWeightChart(period) {
+    chartContainer.innerHTML = '';
+    const now = new Date();
+    const entries = allWeightEntries.filter(function(p) {
+      if (period === 'all') return true;
+      const d = parseDate(p.date);
+      return (now - d) / 86400000 <= parseInt(period);
+    });
+
+    if (entries.length < 2) {
+      chartContainer.innerHTML = '<p style="color:#888;font-size:0.82rem;padding:8px 0;">Nessun dato sufficiente per il periodo selezionato.</p>';
+      return;
+    }
+
+    // Min/Max/Delta
+    const weights = entries.map(function(p){ return p.bodyWeightKg; });
+    const minW = Math.min.apply(null, weights);
+    const maxW = Math.max.apply(null, weights);
+    const delta = (entries[entries.length-1].bodyWeightKg - entries[0].bodyWeightKg).toFixed(1);
+    const deltaColor = delta < 0 ? '#2ecc71' : delta > 0 ? '#e63946' : '#f39c12';
+    const deltaStr = (delta > 0 ? '+' : '') + delta + ' kg';
+
+    const statsRow = document.createElement('div');
+    statsRow.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;';
+    [
+      { label:'Min', val: minW + ' kg', color:'#2ecc71' },
+      { label:'Max', val: maxW + ' kg', color:'#e63946' },
+      { label:'Variazione', val: deltaStr, color: deltaColor },
+    ].forEach(function(s) {
+      const box = document.createElement('div');
+      box.style.cssText = 'flex:1;text-align:center;background:rgba(255,255,255,0.04);border-radius:10px;padding:8px 4px;';
+      box.innerHTML = '<div style="font-size:0.65rem;color:#888;margin-bottom:3px;">' + s.label + '</div>' +
+        '<div style="font-size:0.9rem;font-weight:800;color:' + s.color + '">' + s.val + '</div>';
+      statsRow.appendChild(box);
+    });
+    chartContainer.appendChild(statsRow);
+
+    const card = document.createElement('div');
+    card.className = 'card weight-chart-card';
+    card.innerHTML = '<h3>Andamento peso corporeo</h3>' + buildWeightChart(entries);
+    chartContainer.appendChild(card);
+
+    // Tabella ultimi valori
+    const table = document.createElement('div');
+    table.style.cssText = 'margin-top:12px;font-size:0.82rem;';
+    const recent = entries.slice(-10).reverse();
+    recent.forEach(function(p) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05)';
+      row.innerHTML = '<span>' + p.date + '</span><span style="color:#4cc9f0;font-weight:700">' + p.bodyWeightKg + ' kg</span>';
+      table.appendChild(row);
+    });
+    chartContainer.appendChild(table);
+  }
+
+  document.getElementById('weightPeriodFilter') && (document.getElementById('weightPeriodFilter').onchange = function() {
+    renderWeightChart(this.value);
   });
-  container.appendChild(table);
+  filterBar.querySelector('select').onchange = function() { renderWeightChart(this.value); };
+  renderWeightChart('all');
 }
 
 // --- TAB VOLUME ---
@@ -1621,15 +1874,18 @@ function renderMeseTab(container) {
   const year = now.getFullYear();
   const month = now.getMonth();
 
-  const trainingDays = new Set(
-    data.progress
-      .map(p => { const parts = p.date.split('/'); return `${parts[2]}-${parts[1]}-${parts[0]}`; })
-      .filter(d => {
-        const dt = new Date(d);
-        return dt.getFullYear() === year && dt.getMonth() === month;
-      })
-      .map(d => new Date(d).getDate())
-  );
+  // Map day number -> color (last session that day wins)
+  const trainingDays = new Set();
+  const trainingDayColors = {};
+  data.progress.forEach(function(p) {
+    const parts = p.date.split('/');
+    const d = new Date(parts[2]+'-'+parts[1]+'-'+parts[0]);
+    if (d.getFullYear() === year && d.getMonth() === month) {
+      const dayNum = d.getDate();
+      trainingDays.add(dayNum);
+      trainingDayColors[dayNum] = getDayColor(p.dayName);
+    }
+  });
 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = (new Date(year, month, 1).getDay() + 6) % 7; // Monday = 0
@@ -1657,9 +1913,13 @@ function renderMeseTab(container) {
     const cell = document.createElement('div');
     const isToday = day === now.getDate();
     const isTrained = trainingDays.has(day);
+    const trainColor = trainingDayColors[day] || '#e63946';
+    const r = isTrained ? parseInt(trainColor.slice(1,3),16) : 0;
+    const g = isTrained ? parseInt(trainColor.slice(3,5),16) : 0;
+    const b = isTrained ? parseInt(trainColor.slice(5,7),16) : 0;
     cell.style.cssText = `text-align:center;padding:6px 2px;border-radius:6px;font-size:0.82rem;font-weight:${isToday?'800':'400'};
-      background:${isTrained ? 'rgba(231,57,70,0.25)' : 'rgba(255,255,255,0.04)'};
-      color:${isTrained ? '#e63946' : isToday ? '#fff' : '#777'};
+      background:${isTrained ? `rgba(${r},${g},${b},0.25)` : 'rgba(255,255,255,0.04)'};
+      color:${isTrained ? trainColor : isToday ? '#fff' : '#777'};
       border:${isToday ? '1px solid rgba(255,255,255,0.3)' : '1px solid transparent'};`;
     cell.textContent = day;
     cal.appendChild(cell);
@@ -1669,7 +1929,7 @@ function renderMeseTab(container) {
 
   const legend = document.createElement('div');
   legend.style.cssText = 'margin-top:10px;font-size:0.75rem;color:#888;';
-  legend.innerHTML = `<span style="color:#e63946">●</span> Allenato &nbsp; Sessioni questo mese: <strong style="color:#fff">${trainingDays.size}</strong>`;
+  legend.innerHTML = `● Allenato (colore = scheda) &nbsp; Sessioni questo mese: <strong style="color:#fff">${trainingDays.size}</strong>`;
   card.appendChild(legend);
   container.appendChild(card);
 }
@@ -1730,7 +1990,7 @@ function renderAnnoTab(container) {
   container.appendChild(card);
 }
 
-const EXERCISE_DB = [
+let EXERCISE_DB = [
   { name:'Panca piana (bilanciere)', muscle:'Petto', secondary:'Tricipiti, Deltoidi anteriori', equipment:'Bilanciere', difficulty:'Intermedio', tips:'Tieni le scapole retratte e i piedi a terra. Abbassa il bilanciere controllato fino al petto.' },
   { name:'Panca inclinata (bilanciere)', muscle:'Petto', secondary:'Deltoidi anteriori, Tricipiti', equipment:'Bilanciere', difficulty:'Intermedio', tips:'Inclinazione 30-45°. Colpisce la parte alta del petto.' },
   { name:'Panca piana (manubri)', muscle:'Petto', secondary:'Tricipiti, Deltoidi', equipment:'Manubri', difficulty:'Intermedio', tips:'Maggiore range of motion rispetto al bilanciere. Tieni i polsi neutri.' },
@@ -1775,9 +2035,99 @@ const EXERCISE_DB = [
   { name:'Leg raise', muscle:'Core', secondary:'Flessori anca', equipment:'Corpo libero', difficulty:'Principiante', tips:'Schiena ben aderente al suolo. Controlla la discesa.' },
   { name:'Ab wheel rollout', muscle:'Core', secondary:'Dorsali, Spalle', equipment:'Ruota addominali', difficulty:'Avanzato', tips:'Inizia con range ridotto. Mantieni il core contratto per tutto il movimento.' },
   { name:'Pallof press', muscle:'Core', secondary:'Obliqui, Spalle', equipment:'Cavi', difficulty:'Principiante', tips:'Resisti alla rotazione. Più sei lontano dal cavo, più è difficile.' },
+
+  // --- PETTO aggiuntivi ---
+  { name:'Panca declinata (bilanciere)', muscle:'Petto', secondary:'Tricipiti', equipment:'Bilanciere', difficulty:'Intermedio', tips:'Inclinazione negativa 15-30°. Colpisce la parte bassa del petto. Attento al collo.' },
+  { name:'Pullover con manubrio', muscle:'Petto', secondary:'Schiena, Tricipiti', equipment:'Manubri', difficulty:'Intermedio', tips:'Tieni i gomiti leggermente flessi. Allunga bene nella fase di discesa.' },
+  { name:'Chest press (macchina)', muscle:'Petto', secondary:'Tricipiti, Deltoidi', equipment:'Macchina', difficulty:'Principiante', tips:'Ottimo per isolare il petto in sicurezza. Regola il sedile ad altezza petto.' },
+
+  // --- SCHIENA aggiuntivi ---
+  { name:'Trazioni (Chin-up)', muscle:'Schiena', secondary:'Bicipiti', equipment:'Sbarra', difficulty:'Intermedio', tips:'Presa supina (palme verso di te). Coinvolge più i bicipiti rispetto al pull-up.' },
+  { name:'T-bar row', muscle:'Schiena', secondary:'Bicipiti, Trapezio', equipment:'Bilanciere', difficulty:'Intermedio', tips:'Mantieni la schiena parallela al suolo. Stringi le scapole a fine movimento.' },
+  { name:'Shrug (alzate spalle)', muscle:'Schiena', secondary:'Trapezio', equipment:'Manubri', difficulty:'Principiante', tips:'Alza le spalle verso le orecchie. Non ruotare. Mantieni il collo neutro.' },
+  { name:'Iperextension (schiena)', muscle:'Schiena', secondary:'Glutei, Bicipiti femorali', equipment:'Panca apposita', difficulty:'Principiante', tips:'Non iperestendere la schiena in cima. Ottimo per il rinforzo lombare.' },
+  { name:'Lat machine presa stretta', muscle:'Schiena', secondary:'Bicipiti', equipment:'Macchina', difficulty:'Principiante', tips:'Presa neutra ravvicinata. Tira verso il mento, gomiti lungo i fianchi.' },
+
+  // --- SPALLE aggiuntivi ---
+  { name:'Upright row', muscle:'Spalle', secondary:'Trapezio, Bicipiti', equipment:'Bilanciere', difficulty:'Intermedio', tips:'Tira verso il mento con i gomiti alti. Attenzione: può stressare la cuffia dei rotatori.' },
+  { name:'Face pull con corda', muscle:'Spalle', secondary:'Romboidi, Rotatori', equipment:'Cavi', difficulty:'Principiante', tips:'Usa la corda, tira verso il viso aprendo i gomiti. Fondamentale per la salute delle spalle.' },
+  { name:'Military press (in piedi)', muscle:'Spalle', secondary:'Tricipiti, Core', equipment:'Bilanciere', difficulty:'Avanzato', tips:'Spingi il bilanciere in linea retta sopra la testa. Attiva il core per proteggere la schiena.' },
+
+  // --- BICIPITI aggiuntivi ---
+  { name:'Curl su panca inclinata', muscle:'Bicipiti', secondary:'Avambracci', equipment:'Manubri', difficulty:'Intermedio', tips:'La posizione inclinata allunga il bicipite prima della contrazione. Massimo stretch.' },
+  { name:'Curl EZ-bar', muscle:'Bicipiti', secondary:'Avambracci', equipment:'Bilanciere EZ', difficulty:'Principiante', tips:'La presa semi-prona riduce lo stress sui polsi rispetto al bilanciere dritto.' },
+  { name:'Curl cavi alti (cable curl)', muscle:'Bicipiti', secondary:'Deltoidi anteriori', equipment:'Cavi', difficulty:'Principiante', tips:'Tieni i gomiti fissi ad altezza spalle. Tensione costante sul picco del bicipite.' },
+
+  // --- TRICIPITI aggiuntivi ---
+  { name:'Tricep pushdown (corda)', muscle:'Tricipiti', secondary:'-', equipment:'Cavi', difficulty:'Principiante', tips:'Usa la corda per aprire le mani in basso. Gomiti fissi ai fianchi, massima contrazione.' },
+  { name:'Close grip bench press', muscle:'Tricipiti', secondary:'Petto, Deltoidi', equipment:'Bilanciere', difficulty:'Intermedio', tips:'Presa stretta (circa spalle). Abbassa il bilanciere sul basso petto, gomiti vicini al corpo.' },
+
+  // --- GAMBE aggiuntivi ---
+  { name:'Squat goblet', muscle:'Gambe', secondary:'Glutei, Core', equipment:'Manubri', difficulty:'Principiante', tips:'Tieni il manubrio al petto. Ottimo per imparare la meccanica dello squat.' },
+  { name:'Hack squat (macchina)', muscle:'Gambe', secondary:'Glutei', equipment:'Macchina', difficulty:'Intermedio', tips:'Piedi posizionati in alto per più glutei, in basso per più quadricipiti.' },
+  { name:'Bulgarian split squat', muscle:'Gambe', secondary:'Glutei, Core', equipment:'Manubri', difficulty:'Avanzato', tips:'Piede posteriore su una panca. Scendi in verticale, non in avanti. Ottimo per il monopodalico.' },
+  { name:'Stacco sumo', muscle:'Gambe', secondary:'Glutei, Schiena, Ischiocrurali', equipment:'Bilanciere', difficulty:'Avanzato', tips:'Piedi larghi e punte verso fuori. Coinvolge di più i glutei e gli adduttori rispetto al classico.' },
+  { name:'Leg press (piedi alti)', muscle:'Gambe', secondary:'Glutei', equipment:'Macchina', difficulty:'Principiante', tips:'Piedi nella parte alta della pedana per enfatizzare glutei e bicipiti femorali.' },
+  { name:'Calf raise seduto', muscle:'Polpacci', secondary:'-', equipment:'Macchina', difficulty:'Principiante', tips:'Colpisce il soleo più del gastrocnemio. Ginocchia a 90°, range of motion completo.' },
+  { name:'Adductor machine', muscle:'Gambe', secondary:'Adduttori', equipment:'Macchina', difficulty:'Principiante', tips:'Movimento lento e controllato. Ottimo per la stabilità dell\'anca.' },
+  { name:'Abductor machine', muscle:'Gambe', secondary:'Glutei medi', equipment:'Macchina', difficulty:'Principiante', tips:'Allena i glutei medi, fondamentali per la stabilità del ginocchio.' },
+
+  // --- GLUTEI aggiuntivi ---
+  { name:'Hip thrust (manubrio)', muscle:'Glutei', secondary:'Ischiocrurali', equipment:'Manubri', difficulty:'Principiante', tips:'Spalle sulla panca, manubrio sull\'anca. Spingi verso il soffitto contraendo i glutei.' },
+  { name:'Glute kickback (cavo)', muscle:'Glutei', secondary:'Ischiocrurali', equipment:'Cavi', difficulty:'Principiante', tips:'Ancora il cavo alla caviglia. Calcia indietro mantenendo il core stabile.' },
+  { name:'Sumo squat (manubrio)', muscle:'Glutei', secondary:'Adduttori, Quadricipiti', equipment:'Manubri', difficulty:'Principiante', tips:'Piedi larghi, punte aperte. Tieni il manubrio verticale tra le gambe.' },
+
+  // --- CORE aggiuntivi ---
+  { name:'Crunch inverso', muscle:'Core', secondary:'-', equipment:'Corpo libero', difficulty:'Principiante', tips:'Porta le ginocchia verso il petto sollevando il bacino. Evita slanci.' },
+  { name:'Mountain climber', muscle:'Core', secondary:'Spalle, Gambe', equipment:'Corpo libero', difficulty:'Principiante', tips:'Mantieni i fianchi bassi e il core attivo. Alterna rapidamente le gambe.' },
+  { name:'Hollow body hold', muscle:'Core', secondary:'Spalle', equipment:'Corpo libero', difficulty:'Intermedio', tips:'Schiena piatta a terra, gambe e spalle sollevate. Tieni la posizione statica.' },
+  { name:'Cable crunch', muscle:'Core', secondary:'-', equipment:'Cavi', difficulty:'Principiante', tips:'Inchinati verso il pavimento contraendo gli addominali, non piegando i fianchi.' },
+  { name:'Side plank', muscle:'Core', secondary:'Glutei medi', equipment:'Corpo libero', difficulty:'Principiante', tips:'Corpo in linea retta di lato. Tieni i fianchi sollevati per tutto il tempo.' },
 ];
 
-const MUSCLE_GROUPS = [...new Set(EXERCISE_DB.map(function(e){return e.muscle;}))];
+let MUSCLE_GROUPS = [...new Set(EXERCISE_DB.map(function(e){return e.muscle;}))];
+
+// Carica esercizi personalizzati da localStorage
+(function() {
+  try {
+    const customs = JSON.parse(localStorage.getItem('gymCustomExercises') || '[]');
+    customs.forEach(function(ex) {
+      if (!EXERCISE_DB.find(function(e){ return e.name === ex.name; })) {
+        EXERCISE_DB.push(ex);
+      }
+    });
+    MUSCLE_GROUPS.length = 0;
+    [...new Set(EXERCISE_DB.map(function(e){ return e.muscle; }))].forEach(function(m){ MUSCLE_GROUPS.push(m); });
+  } catch(e) {}
+})();
+
+
+
+function showExerciseInfo(btn) {
+  const name = btn.getAttribute('data-exname');
+  const ex = EXERCISE_DB.find(function(e){ return e.name === name; });
+  if (!ex) return;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px;';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#1a1a2e;border:1px solid rgba(255,255,255,0.12);border-radius:18px;padding:22px;max-width:360px;width:100%;';
+  box.innerHTML =
+    '<div style="font-size:1rem;font-weight:800;color:#fff;margin-bottom:4px;">' + ex.name + '</div>' +
+    '<div style="font-size:0.72rem;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;">' + ex.muscle + (ex.secondary && ex.secondary !== '-' ? ' · ' + ex.secondary : '') + '</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">' +
+      '<span style="background:rgba(255,255,255,0.06);border-radius:8px;padding:4px 10px;font-size:0.72rem;color:#aaa;">🏋️ ' + ex.equipment + '</span>' +
+      '<span style="background:rgba(255,255,255,0.06);border-radius:8px;padding:4px 10px;font-size:0.72rem;color:#aaa;">📊 ' + ex.difficulty + '</span>' +
+    '</div>' +
+    (ex.tips ? '<div style="font-size:0.8rem;color:#ccc;line-height:1.5;border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;">' + ex.tips + '</div>' : '');
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = 'Chiudi';
+  closeBtn.style.cssText = 'margin-top:16px;width:100%;background:rgba(255,255,255,0.06);color:#aaa;border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px;font-size:0.78rem;font-weight:700;';
+  closeBtn.onclick = function() { overlay.remove(); };
+  box.appendChild(closeBtn);
+  overlay.appendChild(box);
+  overlay.onclick = function(e){ if(e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+}
 
 function showExerciseDB() {
   window.scrollTo(0,0);
@@ -1843,6 +2193,71 @@ function showExerciseDB() {
   document.getElementById('dbMuscleFilter').onchange = renderDB;
   document.getElementById('dbSearch').oninput = renderDB;
   renderDB();
+
+  // Bottone aggiungi esercizio custom
+  const addCustomBtn = document.createElement('button');
+  addCustomBtn.style.cssText = 'margin-top:16px;width:100%;background:rgba(46,204,113,0.08);color:#2ecc71;border:1px solid rgba(46,204,113,0.2);border-radius:12px;padding:10px;font-size:0.78rem;font-weight:700;';
+  addCustomBtn.textContent = '+ Aggiungi esercizio personalizzato';
+  addCustomBtn.onclick = function() {
+    addCustomBtn.style.display = 'none';
+    customForm.style.display = 'flex';
+  };
+  main.appendChild(addCustomBtn);
+
+  // Form aggiunta esercizio custom
+  const customForm = document.createElement('div');
+  customForm.className = 'card form-card';
+  customForm.style.cssText = 'display:none;margin-top:12px;';
+  const muscleOptions = MUSCLE_GROUPS.map(function(m){ return '<option value="'+m+'">'+m+'</option>'; }).join('');
+  customForm.innerHTML =
+    '<div style="font-size:0.78rem;font-weight:700;color:#2ecc71;margin-bottom:8px;">✏️ Nuovo esercizio</div>' +
+    '<label>Nome</label><input type="text" id="customExName" placeholder="es. Curl manubri"><br>' +
+    '<label>Muscolo principale</label>' +
+    '<select id="customExMuscle" style="width:100%;margin-bottom:6px;">'+muscleOptions+'</select>' +
+    '<label>Muscoli secondari (opzionale)</label><input type="text" id="customExSecondary" placeholder="es. Avambracci"><br>' +
+    '<label>Attrezzatura</label><input type="text" id="customExEquip" placeholder="es. Manubri"><br>' +
+    '<label>Difficoltà</label>' +
+    '<select id="customExDiff" style="width:100%;margin-bottom:6px;"><option>Principiante</option><option>Intermedio</option><option>Avanzato</option></select>' +
+    '<label>Consiglio tecnico (opzionale)</label><input type="text" id="customExTips" placeholder="es. Tieni i gomiti fermi">';
+
+  const formBtns = document.createElement('div');
+  formBtns.style.cssText = 'display:flex;gap:8px;margin-top:10px;width:100%;';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Annulla';
+  cancelBtn.style.cssText = 'flex:1;';
+  cancelBtn.onclick = function() { customForm.style.display = 'none'; addCustomBtn.style.display = 'block'; };
+
+  const saveCustomBtn = document.createElement('button');
+  saveCustomBtn.textContent = 'Salva';
+  saveCustomBtn.style.cssText = 'flex:1;background:rgba(46,204,113,0.12);color:#2ecc71;border-color:rgba(46,204,113,0.3);';
+  saveCustomBtn.onclick = function() {
+    const name = document.getElementById('customExName').value.trim();
+    if (!name) { showToast('Inserisci un nome.', 'error'); return; }
+    const newEx = {
+      name: name,
+      muscle: document.getElementById('customExMuscle').value,
+      secondary: document.getElementById('customExSecondary').value.trim() || '-',
+      equipment: document.getElementById('customExEquip').value.trim() || '-',
+      difficulty: document.getElementById('customExDiff').value,
+      tips: document.getElementById('customExTips').value.trim() || '',
+      custom: true
+    };
+    EXERCISE_DB.push(newEx);
+    MUSCLE_GROUPS.length = 0;
+    [...new Set(EXERCISE_DB.map(function(e){ return e.muscle; }))].forEach(function(m){ MUSCLE_GROUPS.push(m); });
+    // Salva custom in localStorage
+    const customs = EXERCISE_DB.filter(function(e){ return e.custom; });
+    localStorage.setItem('gymCustomExercises', JSON.stringify(customs));
+    showToast('Esercizio aggiunto!');
+    customForm.style.display = 'none';
+    addCustomBtn.style.display = 'block';
+    renderDB();
+  };
+
+  formBtns.appendChild(cancelBtn);
+  formBtns.appendChild(saveCustomBtn);
+  customForm.appendChild(formBtns);
+  main.appendChild(customForm);
 }
 
 function showAddToDay(exName) {

@@ -392,9 +392,9 @@ function startDay(dayIndex) {
 
     let inner = '<strong>' + ex.name + infoBtn + '</strong>' + repsLabel + weightHistory +
       '<div class="weight-row">' +
-        '<button class="btn-weight-adj" onclick="adjustWeight(' + dayIndex + ',' + exIndex + ',-2.5)">-2.5</button>' +
+        '<button class="btn-weight-adj" onclick="adjustWeight(' + dayIndex + ',' + exIndex + ',-1)">-1</button>' +
         '<input type="number" id="weight_' + dayIndex + '_' + exIndex + '" value="' + (ex.weight||0) + '" oninput="updateWeight(' + dayIndex + ',' + exIndex + ',this.value)" min="0" step="0.5">' +
-        '<button class="btn-weight-adj" onclick="adjustWeight(' + dayIndex + ',' + exIndex + ',2.5)">+2.5</button>' +
+        '<button class="btn-weight-adj" onclick="adjustWeight(' + dayIndex + ',' + exIndex + ',1)">+1</button>' +
         '<span style="color:#444;font-size:0.75rem"> kg</span>' +
         '</div>';
 

@@ -1551,7 +1551,11 @@ function renderProgressList(filter) {
     const toTs = function(entry) {
       const parts = entry.p.date.split('/');
       const d = new Date(parts[2]+'-'+parts[1]+'-'+parts[0]);
-      return d.getTime() + (entry.p.time ? entry.p.time.replace(':','') * 1 : 0);
+      if (entry.p.time) {
+        const tp = entry.p.time.split(':');
+        d.setHours(parseInt(tp[0]), parseInt(tp[1]));
+      }
+      return d.getTime();
     };
     return toTs(b) - toTs(a);
   });

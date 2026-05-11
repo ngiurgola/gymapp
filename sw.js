@@ -1,10 +1,27 @@
-const CACHE_NAME = 'gymapp-v2';
+const CACHE_NAME = 'gymapp-v7';
 const ASSETS = [
   './',
   './index.html',
-  './script.js',
   './style.css',
-  './sounds/beep.mp3'
+  './manifest.json',
+  './sounds/beep.mp3',
+  './js/app.js',
+  './js/data.js',
+  './js/utils.js',
+  './js/themes.js',
+  './js/modal.js',
+  './js/toast.js',
+  './js/sound.js',
+  './js/timers.js',
+  './js/badges.js',
+  './js/exercise-db.js',
+  './js/workout.js',
+  './js/days.js',
+  './js/exercises.js',
+  './js/settings.js',
+  './js/progress.js',
+  './js/nav.js',
+  './js/home.js',
 ];
 
 self.addEventListener('install', function(e) {

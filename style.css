@@ -24,7 +24,7 @@ body {
 
 /* ======== HEADER ======== */
 .header {
-  background: transparent;
+  background: var(--header-bg, transparent);
   padding: 22px 20px 18px;
   text-align: center;
   border-bottom: 1px solid rgba(255,255,255,0.05);
@@ -49,7 +49,7 @@ body {
 .dumbbell-icon {
   width: 48px; height: 20px;
   opacity: 0.75;
-  filter: drop-shadow(0 0 6px rgba(230,57,70,0.5));
+  filter: drop-shadow(0 0 6px rgba(var(--accent-rgb),0.6));
 }
 .dumbbell-icon.flip { transform: scaleX(-1); }
 
@@ -86,9 +86,9 @@ body {
 .navbar button:hover { color: #777; }
 
 .navbar button.active {
-  color: #e63946;
-  border-bottom: 2px solid #e63946;
-  text-shadow: 0 0 12px rgba(230,57,70,0.5);
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+  text-shadow: 0 0 12px rgba(var(--accent-rgb),0.5);
 }
 
 .nav-icon { font-size: 1rem; display: block; margin-bottom: 3px; }
@@ -130,7 +130,7 @@ body {
   align-items: center;
   gap: 8px;
   transition: border-color 0.2s, transform 0.15s;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  box-shadow: var(--card-shadow, 0 4px 24px rgba(0,0,0,0.4));
 }
 
 .card:hover {
@@ -440,6 +440,7 @@ button[onclick*="addExercise"]:hover,
 /* ======== INPUTS ======== */
 input[type="number"],
 input[type="text"],
+input[type="date"],
 select {
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
@@ -453,7 +454,9 @@ select {
 
 input[type="number"] { width: 80px; text-align: center; }
 input[type="text"] { width: 100%; }
+input[type="date"] { color-scheme: dark; cursor: pointer; flex: 1; }
 select { flex: 1; cursor: pointer; }
+option { background: #1a1a2e; color: #f0f0f0; }
 
 input[type="number"]:focus,
 input[type="text"]:focus,
@@ -944,10 +947,11 @@ p { color: #333; font-size: 0.88rem; padding: 12px 0; font-style: italic; }
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: 8px 12px;
+  padding: 8px 4px;
   cursor: pointer;
   white-space: nowrap;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
   transition: all 0.18s;
   box-shadow: none;
   transform: none;
